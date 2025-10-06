@@ -1,0 +1,294 @@
+import React, { useEffect, useImperativeHandle, useRef, forwardRef } from 'react';
+
+/**
+ * Game component encapsulates the Asteroid Dodger gameplay using a canvas and requestAnimationFrame.
+ * Uses refs for mutable state to avoid unnecessary React re-renders.
+ */
+// PUBLIC_INTERFACE
+const Game = forwardRef(function Game({ onScore, onGameOver, running }, ref) {
+  const wrapperRef = useRef(null);
+  const canvasRef = useRef(null);
+  const ctxRef = useRef(null);
+
+  // Mutable game state
+  const shipRef = useRef({ x: 0.5, y: 0.92, w: 0.08, h: 0.04, speed: 0.55 }); // normalized units
+  const inputsRef = useRef({ left: false, right: false });
+  const asteroidsRef = useRef([]); // {x,y,r,vy}
+  const lastTimeRef = useRef(0);
+  const accSpawnRef = useRef(0);
+  const spawnIntervalRef = useRef(0.9); // seconds, will decrease
+  const speedScaleRef = useRef(1);
+  const scoreRef = useRef(0);
+  const aliveRef = useRef(true);
+  const emojiSupportRef = useRef(true);
+
+  // Expose restart to parent
+  useImperativeHandle(ref, () => ({
+    // PUBLIC_INTERFACE
+    restart() {
+      resetGame();
+    }
+  }));
+
+  // Initialize canvas context
+  useEffect(() => {
+    const canvas = canvasRef.current;
+    if (!canvas) return;
+    const ctx = canvas.getContext('2d');
+    ctxRef.current = ctx;
+
+    // Detect rough emoji rendering support (fallback to shapes)
+    emojiSupportRef.current = true;
+    try {
+      ctx.font = '20px system-ui, Apple Color Emoji, Segoe UI Emoji';
+      const m = ctx.measureText('🚀');
+      if (!m || m.width < 5) emojiSupportRef.current = false;
+    } catch {
+      emojiSupportRef.current = false;
+    }
+
+    const handleKeyDown = (e) => {
+      if (e.key === 'ArrowLeft' || e.key === 'a' || e.key === 'A') inputsRef.current.left = true;
+      if (e.key === 'ArrowRight' || e.key === 'd' || e.key === 'D') inputsRef.current.right = true;
+    };
+    const handleKeyUp = (e) => {
+      if (e.key === 'ArrowLeft' || e.key === 'a' || e.key === 'A') inputsRef.current.left = false;
+      if (e.key === 'ArrowRight' || e.key === 'd' || e.key === 'D') inputsRef.current.right = false;
+    };
+    window.addEventListener('keydown', handleKeyDown);
+    window.addEventListener('keyup', handleKeyUp);
+
+    const resize = () => {
+      // Maintain 9:16 aspect ratio inside container
+      const container = wrapperRef.current;
+      if (!container) return;
+      const rect = container.getBoundingClientRect();
+      const targetRatio = 9 / 16;
+      let width = rect.width;
+      let height = width / targetRatio;
+      if (height > rect.height) {
+        height = rect.height;
+        width = height * targetRatio;
+      }
+      const dpr = Math.min(window.devicePixelRatio || 1, 2);
+      canvas.width = Math.floor(width * dpr);
+      canvas.height = Math.floor(height * dpr);
+      canvas.style.width = `${Math.floor(width)}px`;
+      canvas.style.height = `${Math.floor(height)}px`;
+      ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+    };
+    resize();
+    const ro = new ResizeObserver(resize);
+    if (wrapperRef.current) ro.observe(wrapperRef.current);
+
+    resetGame(); // set initial state
+
+    let rafId;
+    const loop = (t) => {
+      rafId = requestAnimationFrame(loop);
+      if (!running || !aliveRef.current) {
+        lastTimeRef.current = t;
+        render(); // render static frame (overlay shown by HUD)
+        return;
+      }
+      const last = lastTimeRef.current || t;
+      const dt = Math.min(0.033, (t - last) / 1000);
+      lastTimeRef.current = t;
+      update(dt);
+      render();
+    };
+    rafId = requestAnimationFrame(loop);
+
+    return () => {
+      window.removeEventListener('keydown', handleKeyDown);
+      window.removeEventListener('keyup', handleKeyUp);
+      ro.disconnect();
+      cancelAnimationFrame(rafId);
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  // Reset or initialize game state
+  function resetGame() {
+    asteroidsRef.current = [];
+    accSpawnRef.current = 0;
+    spawnIntervalRef.current = 0.9;
+    speedScaleRef.current = 1;
+    scoreRef.current = 0;
+    aliveRef.current = true;
+    shipRef.current.x = 0.5;
+    shipRef.current.y = 0.92;
+    if (onScore) onScore(0);
+  }
+
+  function update(dt) {
+    // Increase difficulty over time
+    speedScaleRef.current += 0.03 * dt; // gradual
+    spawnIntervalRef.current = Math.max(0.28, spawnIntervalRef.current - 0.02 * dt);
+
+    // Move ship
+    const ship = shipRef.current;
+    const move = (inputsRef.current.right ? 1 : 0) - (inputsRef.current.left ? 1 : 0);
+    ship.x += move * ship.speed * dt;
+    ship.x = Math.max(ship.w / 2, Math.min(1 - ship.w / 2, ship.x));
+
+    // Spawn asteroids
+    accSpawnRef.current += dt;
+    if (accSpawnRef.current >= spawnIntervalRef.current) {
+      accSpawnRef.current = 0;
+      const r = rand(0.02, 0.06);
+      asteroidsRef.current.push({
+        x: rand(0 + r, 1 - r),
+        y: -r,
+        r,
+        vy: rand(0.18, 0.32) * speedScaleRef.current
+      });
+    }
+
+    // Move asteroids
+    const asts = asteroidsRef.current;
+    for (let i = 0; i < asts.length; i++) {
+      asts[i].y += asts[i].vy * dt;
+    }
+    // Remove off-screen
+    while (asts.length && asts[0].y - asts[0].r > 1.2) {
+      asts.shift();
+    }
+
+    // Collision detection (ship rect vs asteroid circle)
+    const shipRect = {
+      x: ship.x - ship.w / 2,
+      y: ship.y - ship.h / 2,
+      w: ship.w,
+      h: ship.h
+    };
+    for (let a of asts) {
+      if (circleRectOverlap(a.x, a.y, a.r, shipRect)) {
+        aliveRef.current = false;
+        if (onGameOver) onGameOver();
+        break;
+      }
+    }
+
+    // Score over time
+    scoreRef.current += dt * 10; // 10 pts per second
+    if (onScore) onScore(Math.floor(scoreRef.current));
+  }
+
+  function render() {
+    const ctx = ctxRef.current;
+    const canvas = canvasRef.current;
+    if (!ctx || !canvas) return;
+
+    const W = canvas.clientWidth;
+    const H = canvas.clientHeight;
+
+    // Clear
+    ctx.clearRect(0, 0, W, H);
+
+    // Background stars
+    drawStars(ctx, W, H);
+
+    // Draw ship
+    const ship = shipRef.current;
+    const shipPx = {
+      x: ship.x * W,
+      y: ship.y * H,
+      w: ship.w * W,
+      h: ship.h * H
+    };
+
+    if (emojiSupportRef.current) {
+      ctx.font = `${Math.floor(shipPx.h * 1.6)}px system-ui, Apple Color Emoji, Segoe UI Emoji`;
+      ctx.textAlign = 'center';
+      ctx.textBaseline = 'middle';
+      ctx.fillText('🚀', shipPx.x, shipPx.y);
+    } else {
+      // triangle ship
+      ctx.fillStyle = '#9ecbff';
+      ctx.beginPath();
+      ctx.moveTo(shipPx.x, shipPx.y - shipPx.h / 1.2);
+      ctx.lineTo(shipPx.x - shipPx.w / 2, shipPx.y + shipPx.h / 1.2);
+      ctx.lineTo(shipPx.x + shipPx.w / 2, shipPx.y + shipPx.h / 1.2);
+      ctx.closePath();
+      ctx.fill();
+    }
+
+    // Draw asteroids
+    const asts = asteroidsRef.current;
+    for (let a of asts) {
+      const ax = a.x * W;
+      const ay = a.y * H;
+      const r = a.r * Math.min(W, H);
+      if (emojiSupportRef.current) {
+        ctx.font = `${Math.floor(r * 2)}px system-ui, Apple Color Emoji, Segoe UI Emoji`;
+        ctx.textAlign = 'center';
+        ctx.textBaseline = 'middle';
+        ctx.fillText('☄️', ax, ay);
+      } else {
+        ctx.fillStyle = '#f1b86a';
+        ctx.beginPath();
+        ctx.arc(ax, ay, r, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.strokeStyle = 'rgba(0,0,0,0.25)';
+        ctx.lineWidth = 2;
+        ctx.stroke();
+      }
+    }
+
+    // Optional bottom line for ground
+    ctx.strokeStyle = 'rgba(255,255,255,0.08)';
+    ctx.beginPath();
+    ctx.moveTo(0, H * 0.95);
+    ctx.lineTo(W, H * 0.95);
+    ctx.stroke();
+  }
+
+  return (
+    <div className="game-wrapper">
+      <div className="canvas-container" ref={wrapperRef}>
+        <canvas className="canvas" ref={canvasRef} aria-label="Asteroid Dodger canvas" />
+        {!running && (
+          <div className="overlay-center" aria-hidden="true">
+            <div className="overlay-card">
+              <div className="score-large">Press Restart to play again</div>
+              <div className="note">Use ← → or A / D to move</div>
+            </div>
+          </div>
+        )}
+      </div>
+      <div className="small" style={{ marginTop: 8 }}>
+        Survive as long as possible. Score increases over time.
+      </div>
+    </div>
+  );
+});
+
+// Helpers
+function rand(a, b) { return a + Math.random() * (b - a); }
+
+function circleRectOverlap(cx, cy, cr, rect) {
+  // rect in normalized units
+  const rx = rect.x, ry = rect.y, rw = rect.w, rh = rect.h;
+  const testX = clamp(cx, rx, rx + rw);
+  const testY = clamp(cy, ry, ry + rh);
+  const dx = cx - testX;
+  const dy = cy - testY;
+  return (dx * dx + dy * dy) <= (cr * cr);
+}
+
+function clamp(v, min, max) { return Math.max(min, Math.min(max, v)); }
+
+function drawStars(ctx, W, H) {
+  ctx.save();
+  for (let i = 0; i < 40; i++) {
+    const x = (i * 47 % W) + (Math.random() * 2);
+    const y = (i * 91 % H) + (Math.random() * 2);
+    const s = (i % 3) + 1;
+    ctx.fillStyle = `rgba(255,255,255,${0.08 * s})`;
+    ctx.fillRect(x, y, s, s);
+  }
+  ctx.restore();
+}
+
+export default Game;
