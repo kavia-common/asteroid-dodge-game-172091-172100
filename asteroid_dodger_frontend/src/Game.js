@@ -186,9 +186,6 @@ const Game = forwardRef(function Game({ onScore, onGameOver, running }, ref) {
     // Clear
     ctx.clearRect(0, 0, W, H);
 
-    // Background stars
-    drawStars(ctx, W, H);
-
     // Draw ship
     const ship = shipRef.current;
     const shipPx = {
@@ -247,6 +244,7 @@ const Game = forwardRef(function Game({ onScore, onGameOver, running }, ref) {
   return (
     <div className="game-wrapper">
       <div className="canvas-container" ref={wrapperRef}>
+        {/* The Starfield is rendered by parent App and sits absolutely behind this canvas */}
         <canvas className="canvas" ref={canvasRef} aria-label="Asteroid Dodger canvas" />
         {!running && (
           <div className="overlay-center" aria-hidden="true">
@@ -278,17 +276,5 @@ function circleRectOverlap(cx, cy, cr, rect) {
 }
 
 function clamp(v, min, max) { return Math.max(min, Math.min(max, v)); }
-
-function drawStars(ctx, W, H) {
-  ctx.save();
-  for (let i = 0; i < 40; i++) {
-    const x = (i * 47 % W) + (Math.random() * 2);
-    const y = (i * 91 % H) + (Math.random() * 2);
-    const s = (i % 3) + 1;
-    ctx.fillStyle = `rgba(255,255,255,${0.08 * s})`;
-    ctx.fillRect(x, y, s, s);
-  }
-  ctx.restore();
-}
 
 export default Game;

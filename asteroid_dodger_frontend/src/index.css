@@ -7,6 +7,10 @@
   --op-text: #111827;
   --op-muted: #6B7280;
   --op-ring: rgba(37, 99, 235, 0.35);
+
+  /* Dynamic background gradient colors (updated by BackgroundGradient) */
+  --bg1: #0b1e44; /* deep blue */
+  --bg2: #020617; /* near black */
 }
 
 * { box-sizing: border-box; }
@@ -18,9 +22,10 @@ html, body, #root {
 body {
   margin: 0;
   font-family: ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto, Ubuntu, Cantarell, 'Helvetica Neue', Arial, 'Noto Sans', 'Apple Color Emoji', 'Segoe UI Emoji', 'Segoe UI Symbol';
-  background: var(--op-bg);
+  background: linear-gradient(180deg, var(--bg1), var(--bg2));
   color: var(--op-text);
   line-height: 1.5;
+  transition: background 1200ms ease;
 }
 
 .ocean-app {
@@ -181,6 +186,10 @@ body {
   background: radial-gradient(120% 80% at 50% 20%, rgba(37,99,235,0.25), rgba(17,24,39,0.9)), #0b1220;
   border: 1px solid rgba(255,255,255,0.08);
   box-shadow: inset 0 0 60px rgba(37,99,235,0.18), 0 10px 28px rgba(0,0,0,0.25);
+}
+.canvas-container > canvas {
+  position: relative;
+  z-index: 1; /* Game canvas sits above starfield */
 }
 
 .canvas {
