@@ -1,0 +1,4 @@
+{
+    "command": "npm install && npx tsc --noEmit && npm test -- --ci",
+    "working_directory": "/home/kavia/workspace/code-generation/asteroid-dodge-game-172091-172100/asteroid_dodger_frontend"
+}
