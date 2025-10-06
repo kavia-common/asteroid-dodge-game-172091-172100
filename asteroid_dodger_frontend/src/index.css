@@ -240,3 +240,53 @@ body {
   font-size: 12px;
   color: var(--op-muted);
 }
+
+/* Ship overlay for tilt and thruster positioning */
+.ship-overlay {
+  position: absolute;
+  z-index: 2;
+  left: 0;
+  top: 0;
+  right: 0;
+  bottom: 0;
+  pointer-events: none;
+}
+.ship {
+  position: absolute;
+  will-change: transform;
+  transition: transform 160ms ease;
+  transform-origin: 50% 50%;
+}
+.ship.tilt-left {
+  transform: rotate(-10deg);
+}
+.ship.tilt-right {
+  transform: rotate(10deg);
+}
+
+/* Thruster flicker and explosion animations */
+@keyframes thruster-flicker {
+  0%   { opacity: 0.85; transform: translateX(-50%) scaleY(0.95); }
+  50%  { opacity: 1.0;  transform: translateX(-50%) scaleY(1.08); }
+  100% { opacity: 0.88; transform: translateX(-50%) scaleY(0.96); }
+}
+
+@keyframes explosion-burst {
+  0% {
+    transform: scale(0.35);
+    opacity: 0.95;
+  }
+  60% {
+    transform: scale(1.15);
+    opacity: 0.75;
+  }
+  100% {
+    transform: scale(1.6);
+    opacity: 0.0;
+  }
+}
+
+@keyframes shard-fly {
+  0%   { transform: translate(0px, 0px) rotate(0deg); opacity: 1; }
+  100% { transform: translate(calc(var(--dx) * 60px), calc(var(--dy) * 60px)) rotate(180deg); opacity: 0; }
+}

@@ -1,4 +1,6 @@
-import React, { useEffect, useImperativeHandle, useRef, forwardRef } from 'react';
+import React, { useEffect, useImperativeHandle, useRef, forwardRef, useState } from 'react';
+import ThrusterEffect from './components/ThrusterEffect';
+import Explosion from './components/Explosion';
 
 /**
  * Game component encapsulates the Asteroid Dodger gameplay using a canvas and requestAnimationFrame.
@@ -13,7 +15,8 @@ const Game = forwardRef(function Game({ onScore, onGameOver, running }, ref) {
   // Mutable game state
   const shipRef = useRef({ x: 0.5, y: 0.92, w: 0.08, h: 0.04, speed: 0.55 }); // normalized units
   const inputsRef = useRef({ left: false, right: false });
-  const asteroidsRef = useRef([]); // {x,y,r,vy}
+  // Asteroids: {x,y,r,vy,angle,rotSpeed}
+  const asteroidsRef = useRef([]);
   const lastTimeRef = useRef(0);
   const accSpawnRef = useRef(0);
   const spawnIntervalRef = useRef(0.9); // seconds, will decrease
@@ -21,6 +24,10 @@ const Game = forwardRef(function Game({ onScore, onGameOver, running }, ref) {
   const scoreRef = useRef(0);
   const aliveRef = useRef(true);
   const emojiSupportRef = useRef(true);
+
+  // UI overlay states (kept minimal, updated rarely)
+  const [tilt, setTilt] = useState(''); // '', 'tilt-left', 'tilt-right'
+  const [explosions, setExplosions] = useState([]); // [{id,x,y,size}]
 
   // Expose restart to parent
   useImperativeHandle(ref, () => ({
@@ -48,12 +55,21 @@ const Game = forwardRef(function Game({ onScore, onGameOver, running }, ref) {
     }
 
     const handleKeyDown = (e) => {
-      if (e.key === 'ArrowLeft' || e.key === 'a' || e.key === 'A') inputsRef.current.left = true;
-      if (e.key === 'ArrowRight' || e.key === 'd' || e.key === 'D') inputsRef.current.right = true;
+      if (e.key === 'ArrowLeft' || e.key === 'a' || e.key === 'A') {
+        inputsRef.current.left = true;
+        setTilt('tilt-left');
+      }
+      if (e.key === 'ArrowRight' || e.key === 'd' || e.key === 'D') {
+        inputsRef.current.right = true;
+        setTilt('tilt-right');
+      }
     };
     const handleKeyUp = (e) => {
       if (e.key === 'ArrowLeft' || e.key === 'a' || e.key === 'A') inputsRef.current.left = false;
       if (e.key === 'ArrowRight' || e.key === 'd' || e.key === 'D') inputsRef.current.right = false;
+      // Reset tilt when neither held
+      const { left, right } = inputsRef.current;
+      setTilt(right ? 'tilt-right' : left ? 'tilt-left' : '');
     };
     window.addEventListener('keydown', handleKeyDown);
     window.addEventListener('keyup', handleKeyUp);
@@ -118,6 +134,8 @@ const Game = forwardRef(function Game({ onScore, onGameOver, running }, ref) {
     aliveRef.current = true;
     shipRef.current.x = 0.5;
     shipRef.current.y = 0.92;
+    setExplosions([]);
+    setTilt('');
     if (onScore) onScore(0);
   }
 
@@ -137,18 +155,27 @@ const Game = forwardRef(function Game({ onScore, onGameOver, running }, ref) {
     if (accSpawnRef.current >= spawnIntervalRef.current) {
       accSpawnRef.current = 0;
       const r = rand(0.02, 0.06);
+      // Base fall speed with subtle variance, scaled by difficulty
+      const baseVy = rand(0.18, 0.32) * speedScaleRef.current;
+      // Random rotation angle and speed
+      const angle = rand(0, Math.PI * 2);
+      const rotSpeed = rand(-Math.PI, Math.PI) * 0.25; // radians/sec
       asteroidsRef.current.push({
         x: rand(0 + r, 1 - r),
         y: -r,
         r,
-        vy: rand(0.18, 0.32) * speedScaleRef.current
+        vy: baseVy,
+        angle,
+        rotSpeed,
       });
     }
 
-    // Move asteroids
+    // Move asteroids (including rotation update)
     const asts = asteroidsRef.current;
     for (let i = 0; i < asts.length; i++) {
-      asts[i].y += asts[i].vy * dt;
+      const a = asts[i];
+      a.y += a.vy * dt;
+      a.angle += a.rotSpeed * dt;
     }
     // Remove off-screen
     while (asts.length && asts[0].y - asts[0].r > 1.2) {
@@ -165,6 +192,18 @@ const Game = forwardRef(function Game({ onScore, onGameOver, running }, ref) {
     for (let a of asts) {
       if (circleRectOverlap(a.x, a.y, a.r, shipRect)) {
         aliveRef.current = false;
+
+        // Trigger explosion overlay at ship position (pixel coordinates)
+        const canvas = canvasRef.current;
+        if (canvas) {
+          const W = canvas.clientWidth;
+          const H = canvas.clientHeight;
+          const px = ship.x * W;
+          const py = ship.y * H;
+          const id = Date.now() + Math.random();
+          setExplosions((prev) => [...prev, { id, x: px, y: py, size: Math.min(W, H) * 0.22 }]);
+        }
+
         if (onGameOver) onGameOver();
         break;
       }
@@ -217,19 +256,29 @@ const Game = forwardRef(function Game({ onScore, onGameOver, running }, ref) {
       const ax = a.x * W;
       const ay = a.y * H;
       const r = a.r * Math.min(W, H);
+
       if (emojiSupportRef.current) {
+        // For emoji, approximate rotation by switching to canvas rotation for drawn text
+        ctx.save();
+        ctx.translate(ax, ay);
+        ctx.rotate(a.angle || 0);
         ctx.font = `${Math.floor(r * 2)}px system-ui, Apple Color Emoji, Segoe UI Emoji`;
         ctx.textAlign = 'center';
         ctx.textBaseline = 'middle';
-        ctx.fillText('☄️', ax, ay);
+        ctx.fillText('☄️', 0, 0);
+        ctx.restore();
       } else {
+        ctx.save();
+        ctx.translate(ax, ay);
+        ctx.rotate(a.angle || 0);
         ctx.fillStyle = '#f1b86a';
         ctx.beginPath();
-        ctx.arc(ax, ay, r, 0, Math.PI * 2);
+        ctx.arc(0, 0, r, 0, Math.PI * 2);
         ctx.fill();
         ctx.strokeStyle = 'rgba(0,0,0,0.25)';
         ctx.lineWidth = 2;
         ctx.stroke();
+        ctx.restore();
       }
     }
 
@@ -241,11 +290,66 @@ const Game = forwardRef(function Game({ onScore, onGameOver, running }, ref) {
     ctx.stroke();
   }
 
+  // Compute ship overlay position for CSS tilt and thruster placement
+  const shipOverlay = (() => {
+    const canvas = canvasRef.current;
+    if (!canvas) return { x: 0, y: 0, w: 0, h: 0 };
+    const W = canvas.clientWidth;
+    const H = canvas.clientHeight;
+    const ship = shipRef.current;
+    return {
+      x: ship.x * W,
+      y: ship.y * H,
+      w: ship.w * W,
+      h: ship.h * H,
+    };
+  })();
+
   return (
     <div className="game-wrapper">
       <div className="canvas-container" ref={wrapperRef}>
-        {/* The Starfield is rendered by parent App and sits absolutely behind this canvas */}
+        {/* Starfield sits behind this canvas via App */}
         <canvas className="canvas" ref={canvasRef} aria-label="Asteroid Dodger canvas" />
+
+        {/* Overlay layer for ship tilt and thruster */}
+        <div className="ship-overlay" aria-hidden="true">
+          <div
+            className={`ship ${tilt}`}
+            style={{
+              left: shipOverlay.x,
+              top: shipOverlay.y,
+              width: shipOverlay.w,
+              height: shipOverlay.h,
+              marginLeft: -shipOverlay.w / 2,
+              marginTop: -shipOverlay.h / 2,
+            }}
+          >
+            {/* Thruster positioned under the ship */}
+            <ThrusterEffect
+              size={Math.max(10, shipOverlay.h * 0.6)}
+              intensity={1}
+              flickerSpeed="520ms"
+              style={{ bottom: -Math.max(6, shipOverlay.h * 0.25) }}
+            />
+          </div>
+        </div>
+
+        {/* Explosions overlay */}
+        <div className="ship-overlay" aria-hidden="true">
+          {explosions.map((ex) => (
+            <Explosion
+              key={ex.id}
+              x={ex.x}
+              y={ex.y}
+              size={ex.size}
+              duration="560ms"
+              onComplete={() =>
+                setExplosions((prev) => prev.filter((p) => p.id !== ex.id))
+              }
+            />
+          ))}
+        </div>
+
         {!running && (
           <div className="overlay-center" aria-hidden="true">
             <div className="overlay-card">
