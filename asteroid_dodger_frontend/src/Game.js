@@ -1,6 +1,8 @@
 import React, { useEffect, useImperativeHandle, useRef, forwardRef, useState } from 'react';
 import ThrusterEffect from './components/ThrusterEffect';
 import Explosion from './components/Explosion';
+import Overlay from './components/Overlay';
+import SoundManager from './components/SoundManager';
 
 /**
  * Game component encapsulates the Asteroid Dodger gameplay using a canvas and requestAnimationFrame.
@@ -11,6 +13,9 @@ const Game = forwardRef(function Game({ onScore, onGameOver, running }, ref) {
   const wrapperRef = useRef(null);
   const canvasRef = useRef(null);
   const ctxRef = useRef(null);
+
+  // Audio manager
+  const soundRef = useRef(null);
 
   // Mutable game state
   const shipRef = useRef({ x: 0.5, y: 0.92, w: 0.08, h: 0.04, speed: 0.55 }); // normalized units
@@ -28,12 +33,18 @@ const Game = forwardRef(function Game({ onScore, onGameOver, running }, ref) {
   // UI overlay states (kept minimal, updated rarely)
   const [tilt, setTilt] = useState(''); // '', 'tilt-left', 'tilt-right'
   const [explosions, setExplosions] = useState([]); // [{id,x,y,size}]
+  const [hasStarted, setHasStarted] = useState(false);
 
   // Expose restart to parent
   useImperativeHandle(ref, () => ({
     // PUBLIC_INTERFACE
     restart() {
+      setHasStarted(true); // Consider restart as started
       resetGame();
+      // Start music on (re)start
+      if (soundRef.current && soundRef.current.startMusic) {
+        soundRef.current.startMusic();
+      }
     }
   }));
 
@@ -58,10 +69,18 @@ const Game = forwardRef(function Game({ onScore, onGameOver, running }, ref) {
       if (e.key === 'ArrowLeft' || e.key === 'a' || e.key === 'A') {
         inputsRef.current.left = true;
         setTilt('tilt-left');
+        if (soundRef.current && soundRef.current.playMove) soundRef.current.playMove();
       }
       if (e.key === 'ArrowRight' || e.key === 'd' || e.key === 'D') {
         inputsRef.current.right = true;
         setTilt('tilt-right');
+        if (soundRef.current && soundRef.current.playMove) soundRef.current.playMove();
+      }
+      if (!hasStarted && (e.key === 'Enter' || e.key === ' ')) {
+        // Start game via keyboard
+        setHasStarted(true);
+        resetGame();
+        if (soundRef.current && soundRef.current.startMusic) soundRef.current.startMusic();
       }
     };
     const handleKeyUp = (e) => {
@@ -97,14 +116,14 @@ const Game = forwardRef(function Game({ onScore, onGameOver, running }, ref) {
     const ro = new ResizeObserver(resize);
     if (wrapperRef.current) ro.observe(wrapperRef.current);
 
-    resetGame(); // set initial state
+    resetGame(); // set initial state (idle)
 
     let rafId;
     const loop = (t) => {
       rafId = requestAnimationFrame(loop);
-      if (!running || !aliveRef.current) {
+      if (!running || !aliveRef.current || !hasStarted) {
         lastTimeRef.current = t;
-        render(); // render static frame (overlay shown by HUD)
+        render(); // render static frame (overlay shown)
         return;
       }
       const last = lastTimeRef.current || t;
@@ -122,7 +141,16 @@ const Game = forwardRef(function Game({ onScore, onGameOver, running }, ref) {
       cancelAnimationFrame(rafId);
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+  }, [hasStarted, running]);
+
+  // Stop music when not running
+  useEffect(() => {
+    if (!running) {
+      if (soundRef.current && soundRef.current.stopMusic) {
+        soundRef.current.stopMusic();
+      }
+    }
+  }, [running]);
 
   // Reset or initialize game state
   function resetGame() {
@@ -203,6 +231,9 @@ const Game = forwardRef(function Game({ onScore, onGameOver, running }, ref) {
           const id = Date.now() + Math.random();
           setExplosions((prev) => [...prev, { id, x: px, y: py, size: Math.min(W, H) * 0.22 }]);
         }
+
+        // Play hit sfx
+        if (soundRef.current && soundRef.current.playHit) soundRef.current.playHit();
 
         if (onGameOver) onGameOver();
         break;
@@ -305,11 +336,18 @@ const Game = forwardRef(function Game({ onScore, onGameOver, running }, ref) {
     };
   })();
 
+  const isGameOver = !aliveRef.current;
+  const showStartOverlay = !hasStarted;
+  const showGameOverOverlay = hasStarted && isGameOver;
+
   return (
     <div className="game-wrapper">
       <div className="canvas-container" ref={wrapperRef}>
         {/* Starfield sits behind this canvas via App */}
         <canvas className="canvas" ref={canvasRef} aria-label="Asteroid Dodger canvas" />
+
+        {/* Hidden SoundManager here so Game can trigger sounds with minimal re-renders */}
+        <SoundManager ref={soundRef} />
 
         {/* Overlay layer for ship tilt and thruster */}
         <div className="ship-overlay" aria-hidden="true">
@@ -350,14 +388,25 @@ const Game = forwardRef(function Game({ onScore, onGameOver, running }, ref) {
           ))}
         </div>
 
-        {!running && (
-          <div className="overlay-center" aria-hidden="true">
-            <div className="overlay-card">
-              <div className="score-large">Press Restart to play again</div>
-              <div className="note">Use ← → or A / D to move</div>
-            </div>
-          </div>
-        )}
+        {/* Overlays with fade transitions */}
+        <Overlay
+          isVisible={showStartOverlay}
+          type="start"
+          onPrimaryAction={() => {
+            setHasStarted(true);
+            resetGame();
+            if (soundRef.current && soundRef.current.startMusic) soundRef.current.startMusic();
+          }}
+        />
+        <Overlay
+          isVisible={showGameOverOverlay}
+          type="gameover"
+          onPrimaryAction={() => {
+            setHasStarted(true);
+            resetGame();
+            if (soundRef.current && soundRef.current.startMusic) soundRef.current.startMusic();
+          }}
+        />
       </div>
       <div className="small" style={{ marginTop: 8 }}>
         Survive as long as possible. Score increases over time.

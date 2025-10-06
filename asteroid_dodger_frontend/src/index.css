@@ -225,6 +225,73 @@ body {
   text-align: center;
 }
 
+/* New generic overlay with fade/blur transitions */
+.overlay-root {
+  position: absolute;
+  inset: 0;
+  display: grid;
+  place-items: center;
+  z-index: 3;
+  pointer-events: none; /* not interactive when hidden */
+}
+.overlay-root .overlay-panel {
+  pointer-events: auto;
+  background: rgba(255,255,255,0.94);
+  border: 1px solid rgba(17,24,39,0.12);
+  box-shadow: 0 10px 30px rgba(0,0,0,0.18);
+  border-radius: 16px;
+  padding: 18px 16px;
+  min-width: 240px;
+  text-align: center;
+  backdrop-filter: blur(3px);
+}
+
+.overlay-title {
+  font-weight: 800;
+  font-size: 24px;
+  color: var(--op-primary);
+}
+.overlay-subtitle {
+  color: var(--op-muted);
+  font-size: 13px;
+  margin-top: 6px;
+}
+.overlay-actions {
+  margin-top: 14px;
+  display: flex;
+  gap: 10px;
+  justify-content: center;
+}
+
+/* Visibility transitions */
+.overlay-visible {
+  opacity: 1;
+  transform: none;
+  transition: opacity 240ms ease, transform 240ms ease, filter 240ms ease;
+  filter: none;
+}
+.overlay-hidden {
+  opacity: 0;
+  transform: translateY(6px);
+  transition: opacity 240ms ease, transform 240ms ease, filter 240ms ease;
+  filter: blur(2px);
+  pointer-events: none;
+}
+
+/* Score bump animation */
+.score-display {
+  display: inline-block;
+  min-width: 24px;
+}
+.score-bump {
+  animation: score-bump-key 180ms ease-out;
+}
+@keyframes score-bump-key {
+  0% { transform: scale(1);   opacity: 1; }
+  50% { transform: scale(1.2); opacity: 1; }
+  100% { transform: scale(1); opacity: 1; }
+}
+
 .score-large {
   font-weight: 800;
   font-size: 28px;
