@@ -52,7 +52,7 @@ function App() {
       <header className="ocean-header">
         <div className="brand">
           <span className="brand-emoji">🚀</span>
-          <h1>Asteroid Dodger</h1>
+          <h1 className="app-title">Asteroid Dodger</h1>
         </div>
         <HUD score={score} gameOver={gameOver} onRestart={restart} />
       </header>
