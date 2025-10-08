@@ -9,7 +9,7 @@
   --op-ring: rgba(37, 99, 235, 0.35);
 
   /* Title color remains stable and independent of gradient shifts */
-  --title-color: #111827; /* preferred_dark_text */
+  --title-color: #f9fafb; /* preferred_dark_text */
 
   /* Dynamic background gradient colors (updated by BackgroundGradient) */
   --bg1: #0b1e44; /* deep blue */
@@ -356,4 +356,25 @@ body {
 @keyframes shard-fly {
   0%   { transform: translate(0px, 0px) rotate(0deg); opacity: 1; }
   100% { transform: translate(calc(var(--dx) * 60px), calc(var(--dy) * 60px)) rotate(180deg); opacity: 0; }
+}
+
+/* Ocean Professional basic input and table styling */
+.op-input {
+  appearance: none;
+  border: 1px solid rgba(17,24,39,0.12);
+  background: #fff;
+  color: var(--op-text);
+  border-radius: 12px;
+  padding: 10px 12px;
+  font-size: 14px;
+  outline: none;
+  transition: box-shadow .2s ease, border-color .2s ease;
+}
+.op-input:focus {
+  box-shadow: 0 0 0 4px var(--op-ring);
+  border-color: var(--op-primary);
+}
+
+.op-table th, .op-table td {
+  text-align: left;
 }

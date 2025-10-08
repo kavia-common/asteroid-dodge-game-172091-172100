@@ -1,82 +1,92 @@
-# Lightweight React Template for KAVIA
+# Asteroid Dodger Frontend (Ocean Professional)
 
-This project provides a minimal React template with a clean, modern UI and minimal dependencies.
+This app now integrates Supabase email/password authentication and a serverless leaderboard.
 
-## Features
+## New Features
 
-- **Lightweight**: No heavy UI frameworks - uses only vanilla CSS and React
-- **Modern UI**: Clean, responsive design with KAVIA brand styling
-- **Fast**: Minimal dependencies for quick loading times
-- **Simple**: Easy to understand and modify
+- Email/password auth (Supabase)
+- Protected gameplay route (requires login)
+- Score submission on game over: stores the user's best score
+- Leaderboard page with top 10 scores
+- Ocean Professional theme styling for auth and leaderboard UI
 
-## Getting Started
+## Environment Variables
 
-In the project directory, you can run:
+Add the following to your `.env` in the frontend root (do not commit secrets):
 
-### `npm start`
-
-Runs the app in development mode.\
-Open [http://localhost:3000](http://localhost:3000) to view it in your browser.
-
-### `npm test`
-
-Launches the test runner in interactive watch mode.
-
-### `npm run build`
-
-Builds the app for production to the `build` folder.\
-It correctly bundles React in production mode and optimizes the build for the best performance.
-
-## Customization
-
-### Colors
-
-The main brand colors are defined as CSS variables in `src/App.css`:
-
-```css
-:root {
-  --kavia-orange: #E87A41;
-  --kavia-dark: #1A1A1A;
-  --text-color: #ffffff;
-  --text-secondary: rgba(255, 255, 255, 0.7);
-  --border-color: rgba(255, 255, 255, 0.1);
-}
+```
+REACT_APP_SUPABASE_URL=your_supabase_project_url
+REACT_APP_SUPABASE_KEY=your_supabase_anon_key
 ```
 
-### Components
+The build uses these to initialize the Supabase client (no hardcoded keys).
 
-This template uses pure HTML/CSS components instead of a UI framework. You can find component styles in `src/App.css`. 
+## Supabase Setup
 
-Common components include:
-- Buttons (`.btn`, `.btn-large`)
-- Container (`.container`)
-- Navigation (`.navbar`)
-- Typography (`.title`, `.subtitle`, `.description`)
+1) Create a new Supabase project (if not already).
+2) In Authentication -> Settings, ensure Email/Password provider is enabled.
+3) In SQL Editor, create the `scores` table and RLS policies:
 
-## Learn More
+SQL:
+```sql
+-- Table to track a user's best score
+create table if not exists public.scores (
+  user_id uuid primary key references auth.users (id) on delete cascade,
+  email text,
+  best_score integer not null default 0,
+  updated_at timestamptz not null default now()
+);
 
-To learn React, check out the [React documentation](https://reactjs.org/).
+alter table public.scores enable row level security;
 
-### Code Splitting
+-- Only the owner (auth.uid()) can upsert/read their own row; everyone can read for the leaderboard
+create policy "Allow owner upsert own score"
+on public.scores
+for insert
+to authenticated
+with check (user_id = auth.uid());
 
-This section has moved here: [https://facebook.github.io/create-react-app/docs/code-splitting](https://facebook.github.io/create-react-app/docs/code-splitting)
+create policy "Allow owner update own score"
+on public.scores
+for update
+to authenticated
+using (user_id = auth.uid())
+with check (user_id = auth.uid());
 
-### Analyzing the Bundle Size
+-- Allow authenticated users to select any row (read-only) so leaderboard works
+create policy "Allow read leaderboard"
+on public.scores
+for select
+to authenticated
+using (true);
+```
 
-This section has moved here: [https://facebook.github.io/create-react-app/docs/analyzing-the-bundle-size](https://facebook.github.io/create-react-app/docs/analyzing-the-bundle-size)
+Notes:
+- The app only upserts the current user's best score.
+- The leaderboard selects top scores. You can restrict select further if needed (e.g., to only expose `email` prefix in the client).
 
-### Making a Progressive Web App
+## Client-side Table Creation
 
-This section has moved here: [https://facebook.github.io/create-react-app/docs/making-a-progressive-web-app](https://facebook.github.io/create-react-app/docs/making-a-progressive-web-app)
+The app attempts a lightweight probe on startup/score submit to detect if the `scores` table exists. If it doesn't, it logs a warning and shows a helpful message where applicable. DDL cannot run with anon keys by default; use the SQL above in Supabase.
 
-### Advanced Configuration
+## Usage
 
-This section has moved here: [https://facebook.github.io/create-react-app/docs/advanced-configuration](https://facebook.github.io/create-react-app/docs/advanced-configuration)
+- Navigate to /auth to sign in or create an account.
+- Once signed in, you can play from the Home/Play route.
+- On game over, your best score is saved.
+- View top scores on the Leaderboard.
 
-### Deployment
+## Scripts
 
-This section has moved here: [https://facebook.github.io/create-react-app/docs/deployment](https://facebook.github.io/create-react-app/docs/deployment)
+- `npm start` - Dev server
+- `npm test` - Tests
+- `npm run build` - Production build
 
-### `npm run build` fails to minify
+## Styling
 
-This section has moved here: [https://facebook.github.io/create-react-app/docs/troubleshooting#npm-run-build-fails-to-minify](https://facebook.github.io/create-react-app/docs/troubleshooting#npm-run-build-fails-to-minify)
+Theme colors are defined in `src/index.css`. Inputs and tables include small Ocean Professional enhancements.
+
+## Notes
+
+- When deploying, ensure the environment variables are set for your platform.
+- The app uses `@supabase/supabase-js`, `react-router-dom`, and React 18.

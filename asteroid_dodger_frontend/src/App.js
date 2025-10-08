@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useRef, useMemo } from 'react';
+import { BrowserRouter, Routes, Route, Link, Navigate } from 'react-router-dom';
 import './App.css';
 import './index.css';
 import Game from './Game';
@@ -6,33 +7,111 @@ import HUD from './components/HUD';
 import Controls from './components/Controls';
 import Starfield from './components/Starfield';
 import BackgroundGradient from './components/BackgroundGradient';
+import AuthPage from './components/AuthPage';
+import Leaderboard from './components/Leaderboard';
+import ProtectedRoute from './components/ProtectedRoute';
+import { AuthProvider, useAuth } from './context/AuthProvider';
+import { submitBestScore } from './services/scoreService';
+import { ensureScoresTableExists } from './lib/supabaseClient';
 
 // PUBLIC_INTERFACE
-function App() {
-  /** Root App applies Ocean Professional theme and composes HUD, Game, and Controls. */
+function AppShell() {
+  /** Root shell applies theme, header, routes, and session-based nav. */
   const [theme] = useState('light');
   const [score, setScore] = useState(0);
   const [gameOver, setGameOver] = useState(false);
-  const gameRef = useRef(null);
+
+  const { user, signOut } = useAuth();
 
   useEffect(() => {
     document.documentElement.setAttribute('data-theme', theme);
   }, [theme]);
 
   const handleScore = (s) => setScore(s);
-  const handleGameOver = () => setGameOver(true);
+
+  const handleGameOver = async () => {
+    setGameOver(true);
+    // Try to upsert best score if logged in, otherwise ignore
+    if (user) {
+      await ensureScoresTableExists();
+      try {
+        await submitBestScore(user.id, user.email, score);
+      } catch {
+        // eslint-disable-next-line no-console
+        console.warn('Failed to submit score. Ensure Supabase schema exists.');
+      }
+    }
+  };
 
   // Background speed scaling derived from score/time (slowly ramps, clamped)
-  // Map score (0..1000+) to a 0.8..3.0 speed range.
   const starfieldSpeed = useMemo(() => {
-    const t = Math.min(1, (score || 0) / 1200); // normalize progression
+    const t = Math.min(1, (score || 0) / 1200);
     return 0.8 + t * 2.2;
   }, [score]);
 
   // Gradient progression 0..1 based on score
-  const gradientProgression = useMemo(() => {
-    return Math.min(1, (score || 0) / 1500);
-  }, [score]);
+  const gradientProgression = useMemo(() => Math.min(1, (score || 0) / 1500), [score]);
+
+  return (
+    <div className="ocean-app">
+      <BackgroundGradient progression={gradientProgression} />
+      <div className="ocean-background" />
+      <header className="ocean-header">
+        <div className="brand">
+          <span className="brand-emoji">🚀</span>
+          <h1 className="app-title" style={{ color: 'var(--title-color)' }}>Asteroid Dodger</h1>
+        </div>
+
+        <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+          <Link to="/" className="btn">Play</Link>
+          <Link to="/leaderboard" className="btn">Leaderboard</Link>
+          {user ? (
+            <>
+              <span className="small" style={{ color: 'var(--op-muted)' }}>
+                {user.email}
+              </span>
+              <button className="btn" onClick={() => signOut()}>Logout</button>
+            </>
+          ) : (
+            <Link to="/auth" className="btn btn-primary">Sign In</Link>
+          )}
+          <HUD score={score} gameOver={gameOver} onRestart={() => setGameOver(false)} />
+        </div>
+      </header>
+
+      <main className="ocean-main">
+        <Routes>
+          <Route
+            path="/"
+            element={
+              <ProtectedRoute>
+                <GameRoute
+                  score={score}
+                  setScore={setScore}
+                  gameOver={gameOver}
+                  setGameOver={setGameOver}
+                  onScore={handleScore}
+                  onGameOver={handleGameOver}
+                  starfieldSpeed={starfieldSpeed}
+                />
+              </ProtectedRoute>
+            }
+          />
+          <Route path="/auth" element={<AuthPage />} />
+          <Route path="/leaderboard" element={<Leaderboard />} />
+          <Route path="*" element={<Navigate to="/" replace />} />
+        </Routes>
+      </main>
+
+      <footer className="ocean-footer">
+        <span>Theme: Ocean Professional</span>
+      </footer>
+    </div>
+  );
+}
+
+function GameRoute({ score, setScore, gameOver, setGameOver, onScore, onGameOver, starfieldSpeed }) {
+  const gameRef = useRef(null);
 
   // PUBLIC_INTERFACE
   const restart = () => {
@@ -44,37 +123,35 @@ function App() {
   };
 
   return (
-    <div className="ocean-app">
-      {/* Subtle document background gradient shift */}
-      <BackgroundGradient progression={gradientProgression} />
-
-      <div className="ocean-background" />
-      <header className="ocean-header">
-        <div className="brand">
-          <span className="brand-emoji">🚀</span>
-          <h1 className="app-title">Asteroid Dodger</h1>
+    <>
+      <section className="game-card" aria-label="Game area" style={{ position: 'relative' }}>
+        <div style={{ position: 'relative' }}>
+          <Starfield speed={starfieldSpeed} density={1} color="#ffffff" />
+          <Game ref={gameRef} onScore={onScore} onGameOver={onGameOver} running={!gameOver} />
         </div>
-        <HUD score={score} gameOver={gameOver} onRestart={restart} />
-      </header>
+      </section>
 
-      <main className="ocean-main">
-        <section className="game-card" aria-label="Game area" style={{ position: 'relative' }}>
-          {/* Starfield absolutely positioned behind game canvas */}
-          <div style={{ position: 'relative' }}>
-            <Starfield speed={starfieldSpeed} density={1} color="#ffffff" />
-            <Game ref={gameRef} onScore={handleScore} onGameOver={handleGameOver} running={!gameOver} />
+      <section className="controls-card" aria-label="Controls and tutorial">
+        <Controls />
+        {gameOver && (
+          <div style={{ marginTop: 10 }}>
+            <button className="btn btn-primary" onClick={restart}>↻ Restart</button>
           </div>
-        </section>
+        )}
+      </section>
+    </>
+  );
+}
 
-        <section className="controls-card" aria-label="Controls and tutorial">
-          <Controls />
-        </section>
-      </main>
-
-      <footer className="ocean-footer">
-        <span>Theme: Ocean Professional</span>
-      </footer>
-    </div>
+// PUBLIC_INTERFACE
+function App() {
+  /** Wrap with AuthProvider and BrowserRouter to enable auth + routing. */
+  return (
+    <AuthProvider>
+      <BrowserRouter>
+        <AppShell />
+      </BrowserRouter>
+    </AuthProvider>
   );
 }
 
