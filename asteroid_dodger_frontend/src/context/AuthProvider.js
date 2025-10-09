@@ -1,5 +1,5 @@
 import React, { createContext, useContext, useEffect, useState } from 'react';
-import { supabase } from '../lib/supabaseClient';
+import { supabase, supabaseAvailable } from '../lib/supabaseClient';
 
 /**
  * AuthContext provides:
@@ -38,6 +38,15 @@ export function AuthProvider({ children }) {
   // Initial session fetch and auth state change subscription
   useEffect(() => {
     let mounted = true;
+
+    if (!supabaseAvailable) {
+      // No Supabase configured; expose null user and stop loading
+      setSession(null);
+      setUser(null);
+      setLoading(false);
+      return;
+    }
+
     (async () => {
       const { data } = await supabase.auth.getSession();
       if (!mounted) return;
@@ -60,17 +69,20 @@ export function AuthProvider({ children }) {
   }, []);
 
   const signIn = async (email, password) => {
+    if (!supabaseAvailable) return { error: new Error('Supabase not configured') };
     const { error } = await supabase.auth.signInWithPassword({ email, password });
     return { error };
   };
 
   const signUp = async (email, password) => {
+    if (!supabaseAvailable) return { data: null, error: new Error('Supabase not configured') };
     // emailRedirectTo optional; would require SITE_URL env. Not provided here.
     const { data, error } = await supabase.auth.signUp({ email, password });
     return { data, error };
   };
 
   const signOut = async () => {
+    if (!supabaseAvailable) return { error: null };
     const { error } = await supabase.auth.signOut();
     return { error };
   };
