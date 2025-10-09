@@ -2,6 +2,7 @@ import React, { useEffect, useRef, useState } from 'react';
 import ScoreDisplay from './ScoreDisplay';
 import SoundManager from './SoundManager';
 import { loadLocalBestScore } from '../services/bestScore';
+import { useAuth } from '../context/AuthProvider';
 
 /**
  * HUD shows current score, audio controls, and exposes a Restart button when game over.
@@ -14,6 +15,21 @@ import { loadLocalBestScore } from '../services/bestScore';
  * - bestScore?: optional best score to display (falls back to local storage)
  */
 // PUBLIC_INTERFACE
+function EmailBadge() {
+  const { user } = useAuth();
+  if (!user?.email) return null;
+  const email = String(user.email);
+  return (
+    <div className="badge" title="Signed in">
+      <span className="hud-label">Email</span>
+      <span className="separator">•</span>
+      <span className="hud-value" style={{ maxWidth: 220, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+        {email}
+      </span>
+    </div>
+  );
+}
+
 export default function HUD({ score, gameOver, onRestart, onToggleMute, bestScore }) {
   const soundRef = useRef(null);
   const [muted, setMuted] = useState(false);
@@ -52,16 +68,19 @@ export default function HUD({ score, gameOver, onRestart, onToggleMute, bestScor
       {/* Hidden audio elements with imperative API */}
       <SoundManager ref={soundRef} />
 
+      {/* Email display (if available) */}
+      <EmailBadge />
+
       <div className="badge" title="Score">
-        <span>Score</span>
-        <span>•</span>
-        <ScoreDisplay value={score} />
+        <span className="hud-label">Score</span>
+        <span className="separator">•</span>
+        <ScoreDisplay className="hud-value" value={score} />
       </div>
 
       <div className="badge" title="Best score">
-        <span>Best</span>
-        <span>•</span>
-        <ScoreDisplay value={localBest} />
+        <span className="hud-label">Best</span>
+        <span className="separator">•</span>
+        <ScoreDisplay className="hud-value" value={localBest} />
       </div>
 
       <button

@@ -86,15 +86,18 @@ function AppShell() {
           <Link to="/leaderboard" className="btn">Leaderboard</Link>
           {user ? (
             <>
-              <span className="small" style={{ color: 'var(--op-muted)' }}>
-                {user.email}
-              </span>
+              {/* Move email presentation into the HUD with accessible colors */}
               <button className="btn" onClick={() => signOut()}>Logout</button>
             </>
           ) : (
             <Link to="/auth" className="btn btn-primary">Sign In</Link>
           )}
-          <HUD score={score} gameOver={gameOver} onRestart={() => setGameOver(false)} bestScore={bestScore} />
+          <HUD
+            score={score}
+            gameOver={gameOver}
+            onRestart={() => setGameOver(false)}
+            bestScore={bestScore}
+          />
         </div>
       </header>
 

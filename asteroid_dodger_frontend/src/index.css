@@ -109,17 +109,66 @@ body {
   display: flex;
   gap: 12px;
   align-items: center;
+  /* New subtle surface card to ensure contrast on any background */
+  background: var(--op-surface);
+  border: 1px solid rgba(17,24,39,0.08);
+  border-radius: 14px;
+  box-shadow: 0 8px 20px rgba(0,0,0,0.06), 0 2px 8px rgba(0,0,0,0.04);
+  padding: 8px 10px;
 }
+
+/* Badge now uses clear label/value structure with accessible contrast */
 .badge {
   display: inline-flex;
-  align-items: center;
-  gap: 6px;
-  padding: 6px 10px;
-  border-radius: 999px;
-  background: rgba(37,99,235,0.08);
-  color: var(--op-text);
+  align-items: baseline;
+  gap: 8px;
+  padding: 8px 10px;
+  border-radius: 12px;
+  background: rgba(37,99,235,0.06);
+  color: var(--op-text); /* #111827 */
   font-weight: 600;
   border: 1px solid rgba(37,99,235,0.15);
+}
+
+/* HUD label/value styling for 'Email', 'Score', 'Best' */
+.hud-label {
+  color: var(--op-primary);            /* #2563EB */
+  font-weight: 700;
+  letter-spacing: 0.2px;
+  text-transform: none;
+  font-size: 12px;
+}
+
+.hud-value {
+  color: var(--op-text);               /* #111827 */
+  font-weight: 800;
+  font-variant-numeric: tabular-nums;
+  line-height: 1;
+}
+
+/* Improve separator visibility while keeping subtlety */
+.badge > span.separator {
+  color: rgba(17,24,39,0.35);
+}
+
+/* Responsive sizing: slightly larger on wider screens */
+@media (min-width: 768px) {
+  .hud { padding: 10px 12px; }
+  .badge { padding: 8px 12px; }
+  .hud-label { font-size: 12px; }
+  .hud-value { font-size: 14px; }
+}
+
+/* Ensure hover/focus states retain contrast */
+.hud:focus-within {
+  box-shadow: 0 0 0 4px var(--op-ring);
+}
+
+/* Optional: when on darker gradients, keep badge readable */
+@media (prefers-color-scheme: dark) {
+  .hud {
+    background: #ffffff; /* explicit to guarantee WCAG contrast against dark gradient */
+  }
 }
 
 .btn {
