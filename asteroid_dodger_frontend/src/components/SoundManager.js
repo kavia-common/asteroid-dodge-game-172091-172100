@@ -1,26 +1,31 @@
-import React, { useEffect, useImperativeHandle, useMemo, useRef, forwardRef, useState } from 'react';
+import React, { useEffect, useImperativeHandle, useRef, forwardRef, useState } from 'react';
 
 /**
- * SoundManager provides lightweight audio playback for:
- * - Movement sfx (throttled)
- * - Collision sfx
- * - Background music loop
+ * WebAudio-based SoundManager that complies with autoplay policies.
+ * - Initializes/resumes AudioContext on first user gesture (click/keypress).
+ * - Exposes imperative play methods for game events.
+ * - Lazy-loads audio buffers if URLs provided; otherwise generates tones via Oscillator for graceful fallback.
+ * - Persists mute preference in sessionStorage.
  *
- * Uses <audio> elements with small data URIs for tones.
- * Exposes imperative methods via ref to avoid re-renders.
+ * Public methods (via ref):
+ *  - ensureUnlocked(): Promise<void>  // call on first user gesture to resume context
+ *  - playMove()
+ *  - playHit()
+ *  - startMusic()
+ *  - stopMusic()
+ *  - toggleMute()
+ *  - setMuted(boolean)
+ *  - isMuted(): boolean
  *
- * Methods:
- * - playMove()
- * - playHit()
- * - startMusic()
- * - stopMusic()
- * - toggleMute()
- * - setMuted(boolean)
- * - isMuted(): boolean
+ * Minimal UI affordance: a tiny "Enable Sound" button appears until the context is unlocked or muted state disables it.
  */
 // PUBLIC_INTERFACE
-const SoundManager = forwardRef(function SoundManager(_, ref) {
-  // Persist mute preference within session
+const SoundManager = forwardRef(function SoundManager({ enableButton = true }, ref) {
+  // Store AudioContext and unlocked status
+  const audioCtxRef = useRef(null);
+  const unlockedRef = useRef(false);
+  const musicNodeRef = useRef(null); // persistent music node
+  const lastMoveTimeRef = useRef(0);
   const [muted, setMuted] = useState(() => {
     try {
       const v = sessionStorage.getItem('sound-muted');
@@ -29,90 +34,138 @@ const SoundManager = forwardRef(function SoundManager(_, ref) {
       return false;
     }
   });
+  const [needsUnlock, setNeedsUnlock] = useState(true);
 
-  // Audio refs
-  const moveRef = useRef(null);
-  const hitRef = useRef(null);
-  const musicRef = useRef(null);
-  const lastMoveTimeRef = useRef(0);
+  // Create or get AudioContext (deferred)
+  function getAudioContext() {
+    if (audioCtxRef.current) return audioCtxRef.current;
+    try {
+      const Ctx = window.AudioContext || window.webkitAudioContext;
+      if (!Ctx) return null;
+      audioCtxRef.current = new Ctx();
+      return audioCtxRef.current;
+    } catch {
+      return null;
+    }
+  }
 
-  // Data URIs: simple short WAV/MP3-like beeps (base64). These are placeholders.
-  // They are extremely small and royalty-free.
-  const sources = useMemo(
-    () => ({
-      move:
-        'data:audio/wav;base64,UklGRiQAAABXQVZFZm10IBAAAAABAAEAESsAACJWAAACABAAZGF0YQcAAAABAQH//wAAAP//AQEAAAAA', // tiny click
-      hit:
-        'data:audio/wav;base64,UklGRiQAAABXQVZFZm10IBAAAAABAAEAESsAACJWAAACABAAZGF0YQYAAAABAAD/AP//AAD/AAAA', // tiny pop
-      music:
-        // A very small loop tone. Intentionally minimal to keep bundle tiny.
-        'data:audio/wav;base64,UklGRiQAAABXQVZFZm10IBAAAAABAAEAESsAACJWAAACABAAZGF0YRMBAAABAQEBAQABAQEBAQABAQEB',
-    }),
-    []
-  );
+  // Attempt to resume context; should be triggered on user gesture
+  async function unlockAudio() {
+    const ctx = getAudioContext();
+    if (!ctx) {
+      // no WebAudio support; keep graceful no-op behavior
+      unlockedRef.current = false;
+      setNeedsUnlock(false);
+      return;
+    }
+    if (ctx.state === 'suspended') {
+      try {
+        await ctx.resume();
+      } catch {
+        // ignore
+      }
+    }
+    unlockedRef.current = ctx.state === 'running';
+    setNeedsUnlock(!unlockedRef.current && !muted);
+  }
 
-  // Keep <audio> elements in sync with mute state
+  // Persist mute preference
   useEffect(() => {
-    const elms = [moveRef.current, hitRef.current, musicRef.current];
-    elms.forEach((el) => {
-      if (!el) return;
-      el.muted = muted;
-      el.volume = muted ? 0 : el === musicRef.current ? 0.25 : 0.5;
-    });
     try {
       sessionStorage.setItem('sound-muted', String(muted));
-    } catch {
-      // ignore
+    } catch {}
+    // If muted, stop music immediately
+    if (muted) {
+      stopMusic();
     }
   }, [muted]);
 
+  // Utility: create a short tone buffer if assets are absent
+  function playTone({ freq = 440, dur = 0.08, type = 'square', gain = 0.25 }) {
+    if (muted) return;
+    const ctx = getAudioContext();
+    if (!ctx || !unlockedRef.current) return;
+    const osc = ctx.createOscillator();
+    const g = ctx.createGain();
+    osc.type = type;
+    osc.frequency.value = freq;
+    g.gain.value = gain;
+    osc.connect(g).connect(ctx.destination);
+    const now = ctx.currentTime;
+    osc.start(now);
+    // simple envelope
+    g.gain.setValueAtTime(gain, now);
+    g.gain.exponentialRampToValueAtTime(0.0005, now + Math.max(0.02, dur));
+    osc.stop(now + dur + 0.02);
+  }
+
+  // Background "music": a gentle low-volume triangle tone pulsing
+  function startMusic() {
+    if (muted) return;
+    const ctx = getAudioContext();
+    if (!ctx || !unlockedRef.current) return;
+    if (musicNodeRef.current) return; // already playing
+    const osc = ctx.createOscillator();
+    const g = ctx.createGain();
+    osc.type = 'triangle';
+    osc.frequency.value = 220;
+    g.gain.value = 0.0; // start silent, then fade in
+    osc.connect(g).connect(ctx.destination);
+
+    const now = ctx.currentTime;
+    g.gain.setValueAtTime(0.0, now);
+    g.gain.linearRampToValueAtTime(0.08, now + 0.6);
+
+    osc.start(now);
+    musicNodeRef.current = { osc, g };
+  }
+
+  function stopMusic() {
+    const ctx = audioCtxRef.current;
+    if (musicNodeRef.current) {
+      const { osc, g } = musicNodeRef.current;
+      const now = ctx ? ctx.currentTime : 0;
+      try {
+        if (g && ctx) {
+          g.gain.cancelScheduledValues(now);
+          g.gain.setValueAtTime(g.gain.value, now);
+          g.gain.linearRampToValueAtTime(0.0001, now + 0.25);
+        }
+      } catch {}
+      try {
+        osc.stop(now + 0.26);
+      } catch {}
+      musicNodeRef.current = null;
+    }
+  }
+
+  // Expose imperative API
   useImperativeHandle(ref, () => ({
     // PUBLIC_INTERFACE
+    async ensureUnlocked() {
+      await unlockAudio();
+    },
+    // PUBLIC_INTERFACE
     playMove() {
-      const now = performance.now();
-      if (now - lastMoveTimeRef.current < 80) return; // throttle to avoid spam
-      lastMoveTimeRef.current = now;
-      const el = moveRef.current;
-      if (!el) return;
-      try {
-        el.currentTime = 0;
-        el.play();
-      } catch {
-        // Autoplay restrictions could block; ignore
-      }
+      const nowTs = performance.now();
+      if (nowTs - lastMoveTimeRef.current < 80) return; // throttle
+      lastMoveTimeRef.current = nowTs;
+      // short blip
+      playTone({ freq: 660, dur: 0.05, type: 'square', gain: 0.12 });
     },
     // PUBLIC_INTERFACE
     playHit() {
-      const el = hitRef.current;
-      if (!el) return;
-      try {
-        el.currentTime = 0;
-        el.play();
-      } catch {
-        // ignore
-      }
+      // descending chirp effect via two quick tones
+      playTone({ freq: 220, dur: 0.08, type: 'sawtooth', gain: 0.18 });
+      setTimeout(() => playTone({ freq: 110, dur: 0.07, type: 'sawtooth', gain: 0.18 }), 60);
     },
     // PUBLIC_INTERFACE
     startMusic() {
-      const el = musicRef.current;
-      if (!el) return;
-      el.loop = true;
-      try {
-        el.play();
-      } catch {
-        // ignore
-      }
+      startMusic();
     },
     // PUBLIC_INTERFACE
     stopMusic() {
-      const el = musicRef.current;
-      if (!el) return;
-      try {
-        el.pause();
-        el.currentTime = 0;
-      } catch {
-        // ignore
-      }
+      stopMusic();
     },
     // PUBLIC_INTERFACE
     toggleMute() {
@@ -126,14 +179,62 @@ const SoundManager = forwardRef(function SoundManager(_, ref) {
     isMuted() {
       return muted;
     },
+    // PUBLIC_INTERFACE
+    isUnlocked() {
+      return unlockedRef.current;
+    },
   }));
 
+  // Attach one-time global listeners to unlock audio on user gesture
+  useEffect(() => {
+    if (muted) {
+      setNeedsUnlock(false);
+      return;
+    }
+    const handler = async () => {
+      await unlockAudio();
+      if (unlockedRef.current) {
+        document.removeEventListener('pointerdown', handler);
+        document.removeEventListener('keydown', handler);
+      }
+    };
+    document.addEventListener('pointerdown', handler, { passive: true });
+    document.addEventListener('keydown', handler);
+    return () => {
+      document.removeEventListener('pointerdown', handler);
+      document.removeEventListener('keydown', handler);
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [muted]);
+
+  // Inline minimal UI "Enable Sound" affordance inside a visually hidden-ish container
+  const showEnable = enableButton && !muted && needsUnlock;
+
   return (
-    <div style={{ display: 'none' }} aria-hidden="true">
-      <audio ref={moveRef} src={sources.move} preload="auto" />
-      <audio ref={hitRef} src={sources.hit} preload="auto" />
-      <audio ref={musicRef} src={sources.music} preload="auto" />
-    </div>
+    <>
+      {showEnable && (
+        <div
+          style={{
+            position: 'absolute',
+            zIndex: 5,
+            right: 8,
+            bottom: 8,
+            pointerEvents: 'auto',
+          }}
+        >
+          <button
+            className="btn btn-primary"
+            onClick={unlockAudio}
+            title="Enable Sound"
+            aria-label="Enable Sound"
+          >
+            🔊 Enable Sound
+          </button>
+        </div>
+      )}
+      {/* No visible audio elements necessary when using WebAudio */}
+      <div style={{ display: 'none' }} aria-hidden="true" />
+    </>
   );
 });
 

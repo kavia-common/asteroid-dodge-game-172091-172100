@@ -65,22 +65,25 @@ const Game = forwardRef(function Game({ onScore, onGameOver, running }, ref) {
       emojiSupportRef.current = false;
     }
 
-    const handleKeyDown = (e) => {
+    const handleKeyDown = async (e) => {
       if (e.key === 'ArrowLeft' || e.key === 'a' || e.key === 'A') {
         inputsRef.current.left = true;
         setTilt('tilt-left');
-        if (soundRef.current && soundRef.current.playMove) soundRef.current.playMove();
+        if (soundRef.current?.ensureUnlocked) await soundRef.current.ensureUnlocked();
+        if (soundRef.current?.playMove) soundRef.current.playMove();
       }
       if (e.key === 'ArrowRight' || e.key === 'd' || e.key === 'D') {
         inputsRef.current.right = true;
         setTilt('tilt-right');
-        if (soundRef.current && soundRef.current.playMove) soundRef.current.playMove();
+        if (soundRef.current?.ensureUnlocked) await soundRef.current.ensureUnlocked();
+        if (soundRef.current?.playMove) soundRef.current.playMove();
       }
       if (!hasStarted && (e.key === 'Enter' || e.key === ' ')) {
         // Start game via keyboard
         setHasStarted(true);
         resetGame();
-        if (soundRef.current && soundRef.current.startMusic) soundRef.current.startMusic();
+        if (soundRef.current?.ensureUnlocked) await soundRef.current.ensureUnlocked();
+        if (soundRef.current?.startMusic) soundRef.current.startMusic();
       }
     };
     const handleKeyUp = (e) => {
@@ -233,7 +236,11 @@ const Game = forwardRef(function Game({ onScore, onGameOver, running }, ref) {
         }
 
         // Play hit sfx
-        if (soundRef.current && soundRef.current.playHit) soundRef.current.playHit();
+        if (soundRef.current?.ensureUnlocked) {
+          // Do not await inside sync loop; fire-and-forget
+          try { soundRef.current.ensureUnlocked(); } catch {}
+        }
+        if (soundRef.current?.playHit) soundRef.current.playHit();
 
         if (onGameOver) onGameOver();
         break;
@@ -346,8 +353,8 @@ const Game = forwardRef(function Game({ onScore, onGameOver, running }, ref) {
         {/* Starfield sits behind this canvas via App */}
         <canvas className="canvas" ref={canvasRef} aria-label="Asteroid Dodger canvas" />
 
-        {/* Hidden SoundManager here so Game can trigger sounds with minimal re-renders */}
-        <SoundManager ref={soundRef} />
+        {/* SoundManager here so Game can trigger sounds and display minimal 'Enable Sound' affordance */}
+        <SoundManager ref={soundRef} enableButton />
 
         {/* Overlay layer for ship tilt and thruster */}
         <div className="ship-overlay" aria-hidden="true">
@@ -392,19 +399,21 @@ const Game = forwardRef(function Game({ onScore, onGameOver, running }, ref) {
         <Overlay
           isVisible={showStartOverlay}
           type="start"
-          onPrimaryAction={() => {
+          onPrimaryAction={async () => {
             setHasStarted(true);
             resetGame();
-            if (soundRef.current && soundRef.current.startMusic) soundRef.current.startMusic();
+            if (soundRef.current?.ensureUnlocked) await soundRef.current.ensureUnlocked();
+            if (soundRef.current?.startMusic) soundRef.current.startMusic();
           }}
         />
         <Overlay
           isVisible={showGameOverOverlay}
           type="gameover"
-          onPrimaryAction={() => {
+          onPrimaryAction={async () => {
             setHasStarted(true);
             resetGame();
-            if (soundRef.current && soundRef.current.startMusic) soundRef.current.startMusic();
+            if (soundRef.current?.ensureUnlocked) await soundRef.current.ensureUnlocked();
+            if (soundRef.current?.startMusic) soundRef.current.startMusic();
           }}
         />
       </div>

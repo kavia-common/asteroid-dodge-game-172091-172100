@@ -54,8 +54,11 @@ export default function HUD({ score, gameOver, onRestart, onToggleMute, bestScor
   }, [bestScore]);
 
   // Keep local UI in sync if external toggle happens
-  const handleToggleMute = () => {
+  const handleToggleMute = async () => {
     const sm = soundRef.current;
+    if (sm?.ensureUnlocked) {
+      try { await sm.ensureUnlocked(); } catch {}
+    }
     if (sm && typeof sm.toggleMute === 'function') {
       sm.toggleMute();
       setMuted(!!sm.isMuted());
@@ -65,8 +68,8 @@ export default function HUD({ score, gameOver, onRestart, onToggleMute, bestScor
 
   return (
     <div className="hud" role="status" aria-live="polite">
-      {/* Hidden audio elements with imperative API */}
-      <SoundManager ref={soundRef} />
+      {/* Hidden audio elements with imperative API (no enable button here to avoid duplicates) */}
+      <SoundManager ref={soundRef} enableButton={false} />
 
       {/* Email display (if available) */}
       <EmailBadge />
