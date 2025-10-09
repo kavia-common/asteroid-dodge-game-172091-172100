@@ -43,6 +43,7 @@ export default function Overlay({
       ref={containerRef}
       className={`overlay-root ${isVisible ? 'overlay-visible' : 'overlay-hidden'}`}
       role="dialog"
+      data-testid="overlay-root"
     >
       <div className="overlay-panel">
         <div className="overlay-title">{title}</div>

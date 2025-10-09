@@ -1,9 +1,11 @@
 import React, { useEffect, useRef } from 'react';
+import Overlay from './Overlay';
 import ScoreDisplay from './ScoreDisplay';
 
 /**
  * GameOverOverlay
- * Accessible modal-style overlay for Game Over state.
+ * Wrapper that reuses the shared Overlay component with the same structure and classes
+ * as the Start overlay to guarantee identical z-index, positioning, and visibility.
  *
  * Props:
  * - isOpen: boolean - whether overlay is visible
@@ -11,11 +13,9 @@ import ScoreDisplay from './ScoreDisplay';
  * - bestScore: number - best score to date (local or synced)
  * - onRestart: function - called to start a new game
  *
- * Accessibility:
- * - role="dialog" with aria-modal
- * - focus trap while open
- * - ESC key restarts (per requirement to close/restart)
- * - Initial focus set to the primary action
+ * Behavior:
+ * - Focus first actionable element on open (primary button)
+ * - ESC triggers restart (mirrors Start overlay keyboard handling)
  */
 // PUBLIC_INTERFACE
 export default function GameOverOverlay({
@@ -24,107 +24,76 @@ export default function GameOverOverlay({
   bestScore = 0,
   onRestart,
 }) {
-  const overlayRef = useRef(null);
   const btnRef = useRef(null);
 
-  // Focus management: move focus to button when opening
-  useEffect(() => {
-    if (isOpen && btnRef.current) {
-      // delay to ensure element is mounted
-      const t = setTimeout(() => {
-        try { btnRef.current.focus(); } catch {}
-      }, 0);
-      return () => clearTimeout(t);
-    }
-  }, [isOpen]);
-
-  // Simple focus trap and ESC handling
+  // Focus primary button when opened (parity with Start overlay intent)
   useEffect(() => {
     if (!isOpen) return;
+    const t = setTimeout(() => {
+      try { btnRef.current?.focus(); } catch {}
+    }, 0);
+    return () => clearTimeout(t);
+  }, [isOpen]);
 
-    const handleKeyDown = (e) => {
+  // ESC to restart (mirrors Start overlay behavior requirement)
+  useEffect(() => {
+    if (!isOpen) return;
+    const handle = (e) => {
       if (e.key === 'Escape') {
         e.preventDefault();
-        if (onRestart) onRestart();
-        return;
-      }
-      if (e.key === 'Tab') {
-        // Focus trap within overlay
-        const focusable = overlayRef.current?.querySelectorAll(
-          'button, [href], input, select, textarea, [tabindex]:not([tabindex="-1"])'
-        );
-        if (!focusable || focusable.length === 0) return;
-        const first = focusable[0];
-        const last = focusable[focusable.length - 1];
-        if (e.shiftKey && document.activeElement === first) {
-          e.preventDefault();
-          last.focus();
-        } else if (!e.shiftKey && document.activeElement === last) {
-          e.preventDefault();
-          first.focus();
-        }
+        onRestart && onRestart();
       }
     };
-
-    document.addEventListener('keydown', handleKeyDown, true);
-    return () => document.removeEventListener('keydown', handleKeyDown, true);
+    document.addEventListener('keydown', handle, true);
+    return () => document.removeEventListener('keydown', handle, true);
   }, [isOpen, onRestart]);
 
-  // Hide when closed
-  // Add a temporary debug class to help detect visibility/z-index issues.
-  // Remove 'go-debug' after verifying overlay is visible in all states.
-  // Do not include any debug/mix-blend/opacity suppressing classes
-  const rootClass = `go-root ${isOpen ? 'go-open' : 'go-closed'}`;
-
   return (
-    <div
-      className={rootClass}
-      aria-hidden={!isOpen}
-      style={{ pointerEvents: isOpen ? 'auto' : 'none' }}
-    >
-      {/* Backdrop to dim/blur game area */}
-      <div className="go-backdrop" />
-
-      {/* Dialog panel */}
-      <div
-        ref={overlayRef}
-        className="go-panel"
-        role="dialog"
-        aria-modal="true"
-        aria-labelledby="go-title"
-        aria-describedby="go-desc"
+    <div data-testid="gameover-overlay-root">
+      <Overlay
+        isVisible={isOpen}
+        type="gameover"
+        onPrimaryAction={onRestart}
       >
-        <div className="go-title" id="go-title">Game Over</div>
-        <div className="go-sub" id="go-desc">
-          You were hit by an asteroid. Try again to beat your best!
-        </div>
-
-        <div className="go-scores">
-          <div className="go-score">
-            <span className="go-score-label">Score</span>
-            <ScoreDisplay className="go-score-value" value={finalScore} />
+        {/* Shared Overlay already provides title/subtitle based on type.
+            We supply additional score content in the slot to preserve styling and structure. */}
+        <div className="overlay-extra" style={{ display: 'grid', gap: 10, marginTop: 6 }}>
+          <div style={{ display: 'flex', gap: 16, justifyContent: 'center' }}>
+            <div className="badge" title="Final score">
+              <span className="hud-label">Score</span>
+              <span className="separator">•</span>
+              <ScoreDisplay className="hud-value" value={finalScore} />
+            </div>
+            <div className="badge" title="Best score">
+              <span className="hud-label">Best</span>
+              <span className="separator">•</span>
+              <ScoreDisplay className="hud-value" value={bestScore} />
+            </div>
           </div>
-          <div className="go-score">
-            <span className="go-score-label">Best</span>
-            <ScoreDisplay className="go-score-value" value={bestScore} />
+          <div className="small" style={{ textAlign: 'center' }}>
+            Tip: Use ← → or A / D to move. Press ESC to restart quickly.
           </div>
         </div>
 
-        <div className="go-actions">
-          <button
-            ref={btnRef}
-            className="btn btn-primary"
-            onClick={onRestart}
-            aria-label="Play again"
-          >
-            ↻ Play Again
-          </button>
-        </div>
-
-        <div className="small" style={{ marginTop: 8, color: 'var(--op-muted)' }}>
-          Tip: Use ← → or A / D to move. Press ESC to restart quickly.
-        </div>
-      </div>
+        {/* We also need to ensure first actionable element receives focus.
+            Overlay renders its primary button inside .overlay-actions; we attach a ref by post-mount query. */}
+        <FocusPrimaryButtonHook isOpen={isOpen} btnRef={btnRef} />
+      </Overlay>
     </div>
   );
+}
+
+function FocusPrimaryButtonHook({ isOpen, btnRef }) {
+  useEffect(() => {
+    if (!isOpen) return;
+    // Query the primary button inside the shared Overlay panel
+    const root = document.querySelector('.overlay-root.overlay-visible');
+    const primary = root?.querySelector('.overlay-panel .overlay-actions .btn-primary');
+    if (primary && btnRef) {
+      // Assign ref current for potential future use and focus now
+      btnRef.current = primary;
+      try { primary.focus(); } catch {}
+    }
+  }, [isOpen, btnRef]);
+  return null;
 }

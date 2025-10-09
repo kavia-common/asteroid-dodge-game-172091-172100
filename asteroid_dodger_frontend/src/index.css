@@ -264,6 +264,7 @@ body {
   pointer-events: none;
 }
 
+/* overlay-card kept for legacy references, not used by current Overlay */
 .overlay-card {
   pointer-events: auto;
   background: rgba(255,255,255,0.92);
