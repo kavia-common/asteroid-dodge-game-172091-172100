@@ -71,7 +71,9 @@ export default function GameOverOverlay({
   }, [isOpen, onRestart]);
 
   // Hide when closed
-  const rootClass = `go-root ${isOpen ? 'go-open' : 'go-closed'}`;
+  // Add a temporary debug class to help detect visibility/z-index issues.
+  // Remove 'go-debug' after verifying overlay is visible in all states.
+  const rootClass = `go-root ${isOpen ? 'go-open' : 'go-closed'} go-debug`;
 
   return (
     <div
