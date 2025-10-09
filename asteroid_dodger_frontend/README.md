@@ -81,6 +81,26 @@ The app attempts a lightweight probe on startup/score submit to detect if the `s
 - On game over, your best score is saved.
 - View top scores on the Leaderboard.
 
+## Responsive Game Sizing
+
+The game now uses a logical coordinate system (800x600) and computes a render scale so it fits within typical laptop viewports without vertical clipping.
+
+Details:
+- Logical size: 800x600 (physics/game logic).
+- Render scale: scale = min(renderWidth/800, renderHeight/600).
+- Height is capped to min(85vh, 720px) by default; the main area also uses a max-height to avoid body scroll.
+- HUD and overlays adapt to the game width and remain fully visible.
+
+Quick size tweaks:
+- You can pass a URL parameter `?size=small|medium|large` to adjust the render size proportionally:
+  - small: slightly more compact (good for tighter screens)
+  - medium: default
+  - large: taller within the viewport cap
+
+Examples:
+- http://localhost:3000/?size=small
+- http://localhost:3000/?size=large
+
 ## Scripts
 
 - `npm start` - Dev server

@@ -33,7 +33,7 @@ export default function HUD({ score, gameOver, onRestart, bestScore }) {
   const localBest = typeof bestScore === 'number' && bestScore >= 0 ? bestScore : loadLocalBestScore();
 
   return (
-    <div className="hud" role="status" aria-live="polite">
+    <div className="hud" role="status" aria-live="polite" style={{ flexWrap: 'wrap' }}>
       {/* Email display (if available) */}
       <EmailBadge />
 

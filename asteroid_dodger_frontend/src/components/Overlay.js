@@ -58,7 +58,7 @@ export default function Overlay({
       aria-modal="true"
       data-testid="overlay-root"
     >
-      <div className="overlay-panel">
+      <div className="overlay-panel" style={{ width: 'min(92vw, 520px)' }}>
         <div className="overlay-title">{title}</div>
         <div className="overlay-subtitle">{subtitle}</div>
         {children ? <div className="overlay-extra">{children}</div> : null}

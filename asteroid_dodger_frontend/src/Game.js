@@ -2,6 +2,7 @@ import React, { useEffect, useImperativeHandle, useRef, forwardRef, useState } f
 import ThrusterEffect from './components/ThrusterEffect';
 import Explosion from './components/Explosion';
 import Overlay from './components/Overlay';
+import { GameDimensions, computeRenderSize, getSizePresetFromQuery } from './config/dimensions';
 
 /**
  * Game component encapsulates the Asteroid Dodger gameplay using a canvas and requestAnimationFrame.
@@ -17,6 +18,11 @@ const Game = forwardRef(function Game({ onScore, onGameOver, running }, ref) {
   const wrapperRef = useRef(null);
   const canvasRef = useRef(null);
   const ctxRef = useRef(null);
+
+  // Render scale management: maintain logical units in physics,
+  // but compute pixel sizes for drawing based on scale.
+  const renderScaleRef = useRef(1);
+  const presetRef = useRef(getSizePresetFromQuery());
 
   // Mutable game state
   const shipRef = useRef({ x: 0.5, y: 0.92, w: 0.08, h: 0.04, speed: 0.55 }); // normalized units
@@ -121,17 +127,19 @@ const Game = forwardRef(function Game({ onScore, onGameOver, running }, ref) {
     window.addEventListener('keyup', handleKeyUp);
 
     const resize = () => {
-      // Maintain 9:16 aspect ratio inside container
+      // Compute responsive render size based on container and viewport with aspect preserved.
       const container = wrapperRef.current;
       if (!container) return;
       const rect = container.getBoundingClientRect();
-      const targetRatio = 9 / 16;
-      let width = rect.width;
-      let height = width / targetRatio;
-      if (height > rect.height) {
-        height = rect.height;
-        width = height * targetRatio;
-      }
+      const viewportH = window.innerHeight || rect.height || 720;
+
+      const { width, height, scale } = computeRenderSize(rect.width, viewportH, {
+        preset: presetRef.current,
+      });
+
+      renderScaleRef.current = scale;
+
+      // Apply CSS size and back the internal buffer with DPR for crisp text/emojis
       const dpr = Math.min(window.devicePixelRatio || 1, 2);
       canvas.width = Math.floor(width * dpr);
       canvas.height = Math.floor(height * dpr);
