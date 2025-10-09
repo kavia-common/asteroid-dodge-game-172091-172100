@@ -5,7 +5,7 @@ import React, { useEffect, useImperativeHandle, useRef, forwardRef, useState } f
  * - Initializes/resumes AudioContext on first user gesture (click/keypress).
  * - Exposes imperative play methods for game events.
  * - Lazy-loads audio buffers if URLs provided; otherwise generates tones via Oscillator for graceful fallback.
- * - Persists mute preference in sessionStorage.
+ * - Persists mute preference in localStorage (single source of truth).
  *
  * Public methods (via ref):
  *  - ensureUnlocked(): Promise<void>  // call on first user gesture to resume context
@@ -17,26 +17,45 @@ import React, { useEffect, useImperativeHandle, useRef, forwardRef, useState } f
  *  - setMuted(boolean)
  *  - isMuted(): boolean
  *
- * Minimal UI affordance: a tiny "Enable Sound" button appears until the context is unlocked or muted state disables it.
+ * Notes:
+ * - All play methods must respect isMuted() and unlocked state.
+ * - Toggle is debounced to avoid rapid state flapping.
+ * - Emits console logs for debugging state transitions.
  */
 // PUBLIC_INTERFACE
 const SoundManager = forwardRef(function SoundManager({ enableButton = true }, ref) {
-  // Store AudioContext and unlocked status
+  // Audio context and state
   const audioCtxRef = useRef(null);
   const unlockedRef = useRef(false);
-  const musicNodeRef = useRef(null); // persistent music node
+  const musicNodeRef = useRef(null);
   const lastMoveTimeRef = useRef(0);
-  const [muted, setMuted] = useState(() => {
+
+  // Single source of truth for mute: persisted to localStorage
+  const [muted, setMutedState] = useState(() => {
     try {
-      const v = sessionStorage.getItem('sound-muted');
+      const v = localStorage.getItem('sound-muted');
       return v === 'true';
     } catch {
       return false;
     }
   });
+
+  // UI affordance state
   const [needsUnlock, setNeedsUnlock] = useState(true);
 
-  // Create or get AudioContext (deferred)
+  // Debounce toggle to avoid double clicks
+  const lastToggleRef = useRef(0);
+  function setMuted(next) {
+    const now = performance.now();
+    if (now - lastToggleRef.current < 120) {
+      // eslint-disable-next-line no-console
+      console.log('[SoundManager] Toggle ignored (debounced)');
+      return;
+    }
+    lastToggleRef.current = now;
+    setMutedState(Boolean(next));
+  }
+
   function getAudioContext() {
     if (audioCtxRef.current) return audioCtxRef.current;
     try {
@@ -49,11 +68,9 @@ const SoundManager = forwardRef(function SoundManager({ enableButton = true }, r
     }
   }
 
-  // Attempt to resume context; should be triggered on user gesture
   async function unlockAudio() {
     const ctx = getAudioContext();
     if (!ctx) {
-      // no WebAudio support; keep graceful no-op behavior
       unlockedRef.current = false;
       setNeedsUnlock(false);
       return;
@@ -66,21 +83,29 @@ const SoundManager = forwardRef(function SoundManager({ enableButton = true }, r
       }
     }
     unlockedRef.current = ctx.state === 'running';
+    // eslint-disable-next-line no-console
+    try { console.log('[SoundManager] unlockAudio ->', unlockedRef.current ? 'running' : ctx.state); } catch {}
     setNeedsUnlock(!unlockedRef.current && !muted);
   }
 
-  // Persist mute preference
+  // Persist mute preference and enforce behavior
   useEffect(() => {
     try {
-      sessionStorage.setItem('sound-muted', String(muted));
+      localStorage.setItem('sound-muted', String(muted));
     } catch {}
-    // If muted, stop music immediately
+    // Keep "Enable Sound" button hidden if user mutes
+    if (muted) setNeedsUnlock(false);
+    // Stop music immediately on mute
     if (muted) {
       stopMusic();
+    } else {
+      // if unmuted and already unlocked, optionally keep music state as-is
+      // eslint-disable-next-line no-console
+      try { console.log('[SoundManager] Unmuted'); } catch {}
     }
   }, [muted]);
 
-  // Utility: create a short tone buffer if assets are absent
+  // Low-level tone; respects mute + unlock
   function playTone({ freq = 440, dur = 0.08, type = 'square', gain = 0.25 }) {
     if (muted) return;
     const ctx = getAudioContext();
@@ -93,29 +118,25 @@ const SoundManager = forwardRef(function SoundManager({ enableButton = true }, r
     osc.connect(g).connect(ctx.destination);
     const now = ctx.currentTime;
     osc.start(now);
-    // simple envelope
     g.gain.setValueAtTime(gain, now);
     g.gain.exponentialRampToValueAtTime(0.0005, now + Math.max(0.02, dur));
     osc.stop(now + dur + 0.02);
   }
 
-  // Background "music": a gentle low-volume triangle tone pulsing
   function startMusic() {
     if (muted) return;
     const ctx = getAudioContext();
     if (!ctx || !unlockedRef.current) return;
-    if (musicNodeRef.current) return; // already playing
+    if (musicNodeRef.current) return;
     const osc = ctx.createOscillator();
     const g = ctx.createGain();
     osc.type = 'triangle';
     osc.frequency.value = 220;
-    g.gain.value = 0.0; // start silent, then fade in
+    g.gain.value = 0.0;
     osc.connect(g).connect(ctx.destination);
-
     const now = ctx.currentTime;
     g.gain.setValueAtTime(0.0, now);
     g.gain.linearRampToValueAtTime(0.08, now + 0.6);
-
     osc.start(now);
     musicNodeRef.current = { osc, g };
   }
@@ -147,15 +168,15 @@ const SoundManager = forwardRef(function SoundManager({ enableButton = true }, r
     },
     // PUBLIC_INTERFACE
     playMove() {
+      if (muted) return;
       const nowTs = performance.now();
-      if (nowTs - lastMoveTimeRef.current < 80) return; // throttle
+      if (nowTs - lastMoveTimeRef.current < 80) return;
       lastMoveTimeRef.current = nowTs;
-      // short blip
       playTone({ freq: 660, dur: 0.05, type: 'square', gain: 0.12 });
     },
     // PUBLIC_INTERFACE
     playHit() {
-      // descending chirp effect via two quick tones
+      if (muted) return;
       playTone({ freq: 220, dur: 0.08, type: 'sawtooth', gain: 0.18 });
       setTimeout(() => playTone({ freq: 110, dur: 0.07, type: 'sawtooth', gain: 0.18 }), 60);
     },
@@ -169,11 +190,15 @@ const SoundManager = forwardRef(function SoundManager({ enableButton = true }, r
     },
     // PUBLIC_INTERFACE
     toggleMute() {
-      setMuted((m) => !m);
+      setMuted(!muted);
+      // eslint-disable-next-line no-console
+      try { console.log('[SoundManager] toggleMute ->', !muted); } catch {}
     },
     // PUBLIC_INTERFACE
     setMuted(v) {
       setMuted(Boolean(v));
+      // eslint-disable-next-line no-console
+      try { console.log('[SoundManager] setMuted ->', Boolean(v)); } catch {}
     },
     // PUBLIC_INTERFACE
     isMuted() {
@@ -183,9 +208,9 @@ const SoundManager = forwardRef(function SoundManager({ enableButton = true }, r
     isUnlocked() {
       return unlockedRef.current;
     },
-  }));
+  }), [muted]);
 
-  // Attach one-time global listeners to unlock audio on user gesture
+  // Attach unlock listeners only when needed and not muted
   useEffect(() => {
     if (muted) {
       setNeedsUnlock(false);
@@ -207,7 +232,7 @@ const SoundManager = forwardRef(function SoundManager({ enableButton = true }, r
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [muted]);
 
-  // Inline minimal UI "Enable Sound" affordance inside a visually hidden-ish container
+  // Show "Enable Sound" only when not muted and needs unlock
   const showEnable = enableButton && !muted && needsUnlock;
 
   return (
@@ -232,7 +257,7 @@ const SoundManager = forwardRef(function SoundManager({ enableButton = true }, r
           </button>
         </div>
       )}
-      {/* No visible audio elements necessary when using WebAudio */}
+      {/* Invisible node for a11y grouping */}
       <div style={{ display: 'none' }} aria-hidden="true" />
     </>
   );

@@ -34,12 +34,19 @@ export default function HUD({ score, gameOver, onRestart, onToggleMute, bestScor
   const soundRef = useRef(null);
   const [muted, setMuted] = useState(false);
   const [localBest, setLocalBest] = useState(() => loadLocalBestScore());
+  const lastClickRef = useRef(0);
 
-  // Initialize muted state from SoundManager
+  // Initialize muted state from SoundManager and storage
   useEffect(() => {
+    // Try to read from SoundManager (single source of truth)
     const sm = soundRef.current;
     if (sm && typeof sm.isMuted === 'function') {
       setMuted(!!sm.isMuted());
+    } else {
+      try {
+        const v = localStorage.getItem('sound-muted');
+        if (v === 'true' || v === 'false') setMuted(v === 'true');
+      } catch {}
     }
   }, []);
 
@@ -48,20 +55,30 @@ export default function HUD({ score, gameOver, onRestart, onToggleMute, bestScor
     if (typeof bestScore === 'number' && bestScore >= 0) {
       setLocalBest(bestScore);
     } else {
-      // resync from storage in case another tab updated it
       setLocalBest(loadLocalBestScore());
     }
   }, [bestScore]);
 
   // Keep local UI in sync if external toggle happens
   const handleToggleMute = async () => {
+    // debounce rapid clicks
+    const now = performance.now();
+    if (now - lastClickRef.current < 120) {
+      return;
+    }
+    lastClickRef.current = now;
+
     const sm = soundRef.current;
     if (sm?.ensureUnlocked) {
       try { await sm.ensureUnlocked(); } catch {}
     }
     if (sm && typeof sm.toggleMute === 'function') {
       sm.toggleMute();
-      setMuted(!!sm.isMuted());
+      // read back from authoritative source
+      const next = !!sm.isMuted();
+      setMuted(next);
+      // eslint-disable-next-line no-console
+      try { console.log('[HUD] Muted state ->', next); } catch {}
     }
     if (onToggleMute) onToggleMute();
   };
