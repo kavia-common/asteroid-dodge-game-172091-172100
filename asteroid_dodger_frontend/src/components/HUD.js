@@ -1,6 +1,7 @@
 import React, { useEffect, useRef, useState } from 'react';
 import ScoreDisplay from './ScoreDisplay';
 import SoundManager from './SoundManager';
+import { loadLocalBestScore } from '../services/bestScore';
 
 /**
  * HUD shows current score, audio controls, and exposes a Restart button when game over.
@@ -10,11 +11,13 @@ import SoundManager from './SoundManager';
  * - gameOver: boolean
  * - onRestart: function
  * - onToggleMute: optional function to toggle mute (if managed externally)
+ * - bestScore?: optional best score to display (falls back to local storage)
  */
 // PUBLIC_INTERFACE
-export default function HUD({ score, gameOver, onRestart, onToggleMute }) {
+export default function HUD({ score, gameOver, onRestart, onToggleMute, bestScore }) {
   const soundRef = useRef(null);
   const [muted, setMuted] = useState(false);
+  const [localBest, setLocalBest] = useState(() => loadLocalBestScore());
 
   // Initialize muted state from SoundManager
   useEffect(() => {
@@ -23,6 +26,16 @@ export default function HUD({ score, gameOver, onRestart, onToggleMute }) {
       setMuted(!!sm.isMuted());
     }
   }, []);
+
+  // Whenever bestScore prop changes, reflect it; otherwise keep local storage value.
+  useEffect(() => {
+    if (typeof bestScore === 'number' && bestScore >= 0) {
+      setLocalBest(bestScore);
+    } else {
+      // resync from storage in case another tab updated it
+      setLocalBest(loadLocalBestScore());
+    }
+  }, [bestScore]);
 
   // Keep local UI in sync if external toggle happens
   const handleToggleMute = () => {
@@ -43,6 +56,12 @@ export default function HUD({ score, gameOver, onRestart, onToggleMute }) {
         <span>Score</span>
         <span>•</span>
         <ScoreDisplay value={score} />
+      </div>
+
+      <div className="badge" title="Best score">
+        <span>Best</span>
+        <span>•</span>
+        <ScoreDisplay value={localBest} />
       </div>
 
       <button

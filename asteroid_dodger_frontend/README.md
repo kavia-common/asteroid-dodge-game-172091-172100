@@ -9,6 +9,7 @@ This app now integrates Supabase email/password authentication and a serverless 
 - Score submission on game over: stores the user's best score
 - Leaderboard page with top 10 scores
 - Ocean Professional theme styling for auth and leaderboard UI
+- Local best score persistence via localStorage (works without Supabase)
 
 ## Environment Variables
 

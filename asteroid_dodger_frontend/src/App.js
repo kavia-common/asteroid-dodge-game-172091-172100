@@ -13,6 +13,7 @@ import ProtectedRoute from './components/ProtectedRoute';
 import { AuthProvider, useAuth } from './context/AuthProvider';
 import { submitBestScore } from './services/scoreService';
 import { ensureScoresTableExists } from './lib/supabaseClient';
+import { loadLocalBestScore, updateLocalBestIfNeeded } from './services/bestScore';
 
 // PUBLIC_INTERFACE
 function AppShell() {
@@ -20,8 +21,13 @@ function AppShell() {
   const [theme] = useState('light');
   const [score, setScore] = useState(0);
   const [gameOver, setGameOver] = useState(false);
+  const [bestScore, setBestScore] = useState(() => loadLocalBestScore());
 
   const { user, signOut } = useAuth();
+
+  // track latest score in ref to avoid stale closures when gameOver triggers
+  const latestScoreRef = useRef(score);
+  useEffect(() => { latestScoreRef.current = score; }, [score]);
 
   useEffect(() => {
     document.documentElement.setAttribute('data-theme', theme);
@@ -30,17 +36,30 @@ function AppShell() {
   const handleScore = (s) => setScore(s);
 
   const handleGameOver = async () => {
+    // mark over first to stop gameplay loop; then compute final score from ref
     setGameOver(true);
-    // Try to upsert best score if logged in, otherwise ignore
+    const finalScore = latestScoreRef.current;
+
+    // Update local best score deterministically
+    const { best } = updateLocalBestIfNeeded(finalScore);
+    setBestScore(best);
+
+    // Optional Supabase upsert if logged in. Do not fail if unavailable.
     if (user) {
       await ensureScoresTableExists();
       try {
-        await submitBestScore(user.id, user.email, score);
-      } catch {
+        await submitBestScore(user.id, user.email, finalScore);
+      } catch (e) {
         // eslint-disable-next-line no-console
-        console.warn('Failed to submit score. Ensure Supabase schema exists.');
+        console.warn('Failed to submit score. Ensure Supabase schema exists.', e?.message || e);
       }
     }
+
+    // Runtime log to aid unit-level verification
+    try {
+      // eslint-disable-next-line no-console
+      console.log('[GameOver] final:', finalScore, 'best:', best);
+    } catch {}
   };
 
   // Background speed scaling derived from score/time (slowly ramps, clamped)
@@ -75,7 +94,7 @@ function AppShell() {
           ) : (
             <Link to="/auth" className="btn btn-primary">Sign In</Link>
           )}
-          <HUD score={score} gameOver={gameOver} onRestart={() => setGameOver(false)} />
+          <HUD score={score} gameOver={gameOver} onRestart={() => setGameOver(false)} bestScore={bestScore} />
         </div>
       </header>
 
