@@ -52,7 +52,7 @@ export default function Overlay({
         }
       }}
     >
-      <div className="overlay-panel">
+      <div className="overlay-panel" /* Solid surface panel for clarity */>
         <div className="overlay-title">{title}</div>
         <div className="overlay-subtitle">{subtitle}</div>
         {children ? <div className="overlay-extra">{children}</div> : null}

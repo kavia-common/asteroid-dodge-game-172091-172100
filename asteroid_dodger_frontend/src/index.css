@@ -286,14 +286,16 @@ body {
 }
 .overlay-root .overlay-panel {
   pointer-events: auto;
-  background: rgba(255,255,255,0.94);
-  border: 1px solid rgba(17,24,39,0.12);
-  box-shadow: 0 10px 30px rgba(0,0,0,0.18);
+  /* Solid white surface to ensure maximum readability */
+  background: #ffffff;
+  /* Add accent-tinted border for separation */
+  border: 1px solid #2563EB1a; /* ~10% alpha accent */
+  box-shadow: 0 16px 36px rgba(0,0,0,0.20), 0 2px 10px rgba(0,0,0,0.08);
   border-radius: 16px;
   padding: 18px 16px;
   min-width: 240px;
   text-align: center;
-  backdrop-filter: blur(3px);
+  /* Remove blur to keep text crisp and avoid opacity changes */
 }
 
 /* Game Over Overlay styles (Ocean Professional) */
@@ -316,9 +318,9 @@ body {
 .go-backdrop {
   position: absolute;
   inset: 0;
-  background: rgba(17,24,39,0.6); /* darker, clearer dimming */
-  backdrop-filter: blur(3px) saturate(110%);
-  /* Ensure backdrop itself does not steal unintended focus */
+  background: rgba(17,24,39,0.6); /* >=60% dimming as required */
+  /* Keep blur minimal or remove to avoid affecting foreground clarity */
+  backdrop-filter: none;
 }
 .go-panel {
   position: absolute;
@@ -326,18 +328,21 @@ body {
   top: 50%;
   transform: translate(-50%,-50%);
   width: min(92%, 420px);
-  background: var(--op-surface);
-  border: 1px solid rgba(17,24,39,0.12);
+  /* Opaque white surface */
+  background: #ffffff;
+  /* Accent-tinted visible border */
+  border: 1px solid #2563EB1a;
   border-radius: 16px;
   box-shadow: 0 20px 40px rgba(0,0,0,0.28), 0 2px 10px rgba(0,0,0,0.10);
   padding: 18px 16px;
   text-align: center;
   z-index: 1; /* ensure panel is above backdrop */
+  color: #111827; /* Ensure body text inside panel is #111827 */
 }
 .go-title {
   font-weight: 900;
   font-size: 26px;
-  color: var(--op-primary);
+  color: #2563EB; /* accent color for heading */
   letter-spacing: 0.2px;
 }
 .go-sub {
@@ -352,7 +357,7 @@ body {
   gap: 10px;
 }
 .go-score {
-  background: linear-gradient(180deg, rgba(37,99,235,0.04), rgba(255,255,255,0.8));
+  background: #ffffff; /* solid surface inside panel */
   border: 1px solid rgba(17,24,39,0.08);
   border-radius: 12px;
   padding: 10px 12px;
@@ -367,7 +372,7 @@ body {
   display: block;
   margin-top: 4px;
   font-size: 22px;
-  color: var(--op-text);
+  color: #111827; /* strong text color */
   font-weight: 900;
 }
 .go-actions {
@@ -386,12 +391,7 @@ body {
   pointer-events: none;
 }
 
-/* Temporary: Debugging aid to confirm overlay presence and stacking.
-   Remove this rule after verification. */
-.go-debug {
-  outline: 2px dashed rgba(255, 99, 71, 0.6);
-  outline-offset: -2px;
-}
+/* Debug outline removed after verification to avoid unintended visuals */
 
 .overlay-title {
   font-weight: 800;
