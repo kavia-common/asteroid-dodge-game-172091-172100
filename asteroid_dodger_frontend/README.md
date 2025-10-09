@@ -1,8 +1,11 @@
 # Asteroid Dodger Frontend (Ocean Professional)
 
-This app now integrates Supabase email/password authentication and a serverless leaderboard.
+This app integrates Supabase email/password authentication and a serverless leaderboard.
 
-## New Features
+Important: Sound removed
+- Per requirements, all audio functionality has been removed. There is no SoundManager, no mute toggle, and no audio initialization/unlock logic. Gameplay and visuals are unaffected.
+
+## Features
 
 - Email/password auth (Supabase)
 - Protected gameplay route (requires login)
@@ -10,6 +13,7 @@ This app now integrates Supabase email/password authentication and a serverless 
 - Leaderboard page with top 10 scores
 - Ocean Professional theme styling for auth and leaderboard UI
 - Local best score persistence via localStorage (works without Supabase)
+- No audio/sound features
 
 ## Environment Variables
 

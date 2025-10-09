@@ -2,7 +2,6 @@ import React, { useEffect, useImperativeHandle, useRef, forwardRef, useState } f
 import ThrusterEffect from './components/ThrusterEffect';
 import Explosion from './components/Explosion';
 import Overlay from './components/Overlay';
-import SoundManager from './components/SoundManager';
 
 /**
  * Game component encapsulates the Asteroid Dodger gameplay using a canvas and requestAnimationFrame.
@@ -13,9 +12,6 @@ const Game = forwardRef(function Game({ onScore, onGameOver, running }, ref) {
   const wrapperRef = useRef(null);
   const canvasRef = useRef(null);
   const ctxRef = useRef(null);
-
-  // Audio manager
-  const soundRef = useRef(null);
 
   // Mutable game state
   const shipRef = useRef({ x: 0.5, y: 0.92, w: 0.08, h: 0.04, speed: 0.55 }); // normalized units
@@ -41,10 +37,6 @@ const Game = forwardRef(function Game({ onScore, onGameOver, running }, ref) {
     restart() {
       setHasStarted(true); // Consider restart as started
       resetGame();
-      // Start music on (re)start
-      if (soundRef.current && soundRef.current.startMusic) {
-        soundRef.current.startMusic();
-      }
     }
   }));
 
@@ -65,25 +57,19 @@ const Game = forwardRef(function Game({ onScore, onGameOver, running }, ref) {
       emojiSupportRef.current = false;
     }
 
-    const handleKeyDown = async (e) => {
+    const handleKeyDown = (e) => {
       if (e.key === 'ArrowLeft' || e.key === 'a' || e.key === 'A') {
         inputsRef.current.left = true;
         setTilt('tilt-left');
-        if (soundRef.current?.ensureUnlocked) await soundRef.current.ensureUnlocked();
-        if (soundRef.current?.playMove) soundRef.current.playMove();
       }
       if (e.key === 'ArrowRight' || e.key === 'd' || e.key === 'D') {
         inputsRef.current.right = true;
         setTilt('tilt-right');
-        if (soundRef.current?.ensureUnlocked) await soundRef.current.ensureUnlocked();
-        if (soundRef.current?.playMove) soundRef.current.playMove();
       }
       if (!hasStarted && (e.key === 'Enter' || e.key === ' ')) {
         // Start game via keyboard
         setHasStarted(true);
         resetGame();
-        if (soundRef.current?.ensureUnlocked) await soundRef.current.ensureUnlocked();
-        if (soundRef.current?.startMusic) soundRef.current.startMusic();
       }
     };
     const handleKeyUp = (e) => {
@@ -145,15 +131,6 @@ const Game = forwardRef(function Game({ onScore, onGameOver, running }, ref) {
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [hasStarted, running]);
-
-  // Stop music when not running
-  useEffect(() => {
-    if (!running) {
-      if (soundRef.current && soundRef.current.stopMusic) {
-        soundRef.current.stopMusic();
-      }
-    }
-  }, [running]);
 
   // Reset or initialize game state
   function resetGame() {
@@ -234,13 +211,6 @@ const Game = forwardRef(function Game({ onScore, onGameOver, running }, ref) {
           const id = Date.now() + Math.random();
           setExplosions((prev) => [...prev, { id, x: px, y: py, size: Math.min(W, H) * 0.22 }]);
         }
-
-        // Play hit sfx
-        if (soundRef.current?.ensureUnlocked) {
-          // Do not await inside sync loop; fire-and-forget
-          try { soundRef.current.ensureUnlocked(); } catch {}
-        }
-        if (soundRef.current?.playHit) soundRef.current.playHit();
 
         if (onGameOver) onGameOver();
         break;
@@ -353,9 +323,6 @@ const Game = forwardRef(function Game({ onScore, onGameOver, running }, ref) {
         {/* Starfield sits behind this canvas via App */}
         <canvas className="canvas" ref={canvasRef} aria-label="Asteroid Dodger canvas" />
 
-        {/* SoundManager here so Game can trigger sounds and display minimal 'Enable Sound' affordance */}
-        <SoundManager ref={soundRef} enableButton />
-
         {/* Overlay layer for ship tilt and thruster */}
         <div className="ship-overlay" aria-hidden="true">
           <div
@@ -399,21 +366,17 @@ const Game = forwardRef(function Game({ onScore, onGameOver, running }, ref) {
         <Overlay
           isVisible={showStartOverlay}
           type="start"
-          onPrimaryAction={async () => {
+          onPrimaryAction={() => {
             setHasStarted(true);
             resetGame();
-            if (soundRef.current?.ensureUnlocked) await soundRef.current.ensureUnlocked();
-            if (soundRef.current?.startMusic) soundRef.current.startMusic();
           }}
         />
         <Overlay
           isVisible={showGameOverOverlay}
           type="gameover"
-          onPrimaryAction={async () => {
+          onPrimaryAction={() => {
             setHasStarted(true);
             resetGame();
-            if (soundRef.current?.ensureUnlocked) await soundRef.current.ensureUnlocked();
-            if (soundRef.current?.startMusic) soundRef.current.startMusic();
           }}
         />
       </div>
