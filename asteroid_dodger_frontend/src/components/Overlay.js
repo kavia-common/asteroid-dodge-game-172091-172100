@@ -43,16 +43,8 @@ export default function Overlay({
       ref={containerRef}
       className={`overlay-root ${isVisible ? 'overlay-visible' : 'overlay-hidden'}`}
       role="dialog"
-      aria-modal="true"
-      onKeyDown={(e) => {
-        if (!isVisible) return;
-        if (e.key === 'Enter') {
-          e.preventDefault();
-          onPrimaryAction && onPrimaryAction();
-        }
-      }}
     >
-      <div className="overlay-panel" /* Solid surface panel for clarity */>
+      <div className="overlay-panel">
         <div className="overlay-title">{title}</div>
         <div className="overlay-subtitle">{subtitle}</div>
         {children ? <div className="overlay-extra">{children}</div> : null}

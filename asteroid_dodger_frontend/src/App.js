@@ -115,7 +115,6 @@ function AppShell() {
                   onScore={handleScore}
                   onGameOver={handleGameOver}
                   starfieldSpeed={starfieldSpeed}
-                  bestScore={bestScore}
                 />
               </ProtectedRoute>
             }
@@ -133,7 +132,7 @@ function AppShell() {
   );
 }
 
-function GameRoute({ score, setScore, gameOver, setGameOver, onScore, onGameOver, starfieldSpeed, bestScore }) {
+function GameRoute({ score, setScore, gameOver, setGameOver, onScore, onGameOver, starfieldSpeed }) {
   const gameRef = useRef(null);
 
   // PUBLIC_INTERFACE
@@ -150,14 +149,7 @@ function GameRoute({ score, setScore, gameOver, setGameOver, onScore, onGameOver
       <section className="game-card" aria-label="Game area" style={{ position: 'relative' }}>
         <div style={{ position: 'relative' }}>
           <Starfield speed={starfieldSpeed} density={1} color="#ffffff" />
-          <Game
-            ref={gameRef}
-            onScore={onScore}
-            onGameOver={onGameOver}
-            running={!gameOver}
-            finalScore={score}
-            bestScore={bestScore}
-          />
+          <Game ref={gameRef} onScore={onScore} onGameOver={onGameOver} running={!gameOver} />
         </div>
       </section>
 
