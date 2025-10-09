@@ -11,6 +11,10 @@ import React, { useEffect, useRef } from 'react';
  * - children: optional extra content
  *
  * The component uses CSS classes for fade-in/out and does not block input when hidden.
+ *
+ * Accessibility and focus:
+ * - When visible, the overlay root is focusable and receives focus to avoid passing keys to the game canvas.
+ * - aria-hidden toggled based on visibility.
  */
 // PUBLIC_INTERFACE
 export default function Overlay({
@@ -27,6 +31,14 @@ export default function Overlay({
     if (!el) return;
     // Toggle aria-hidden based on visibility for accessibility
     el.setAttribute('aria-hidden', String(!isVisible));
+    // When shown, move focus into the overlay to prevent accidental canvas input
+    if (isVisible) {
+      // Make sure it can be focused
+      if (!el.hasAttribute('tabindex')) {
+        el.setAttribute('tabindex', '-1');
+      }
+      try { el.focus({ preventScroll: true }); } catch {}
+    }
   }, [isVisible]);
 
   const title =
@@ -43,6 +55,7 @@ export default function Overlay({
       ref={containerRef}
       className={`overlay-root ${isVisible ? 'overlay-visible' : 'overlay-hidden'}`}
       role="dialog"
+      aria-modal="true"
       data-testid="overlay-root"
     >
       <div className="overlay-panel">

@@ -6,6 +6,11 @@ import Overlay from './components/Overlay';
 /**
  * Game component encapsulates the Asteroid Dodger gameplay using a canvas and requestAnimationFrame.
  * Uses refs for mutable state to avoid unnecessary React re-renders.
+ *
+ * Game-over flow hardening:
+ * - Prevents immediate auto-restart by debouncing overlay dismissal (min 400ms).
+ * - Ensures requestAnimationFrame loop pauses when gameOver overlay is visible.
+ * - Ignores start/restart triggers until debounce window passes and overlay is visible.
  */
 // PUBLIC_INTERFACE
 const Game = forwardRef(function Game({ onScore, onGameOver, running }, ref) {
@@ -31,16 +36,31 @@ const Game = forwardRef(function Game({ onScore, onGameOver, running }, ref) {
   const [explosions, setExplosions] = useState([]); // [{id,x,y,size}]
   const [hasStarted, setHasStarted] = useState(false);
 
+  // Guard: debounce for overlay to avoid accidental key carry-over
+  const overlayReadyAtRef = useRef(0); // timestamp in ms when overlay can accept dismiss actions
+  const OVERLAY_DEBOUNCE_MS = 450;
+
+  function setOverlayDebounce() {
+    overlayReadyAtRef.current = performance.now() + OVERLAY_DEBOUNCE_MS;
+  }
+  function canDismissOverlay() {
+    return performance.now() >= overlayReadyAtRef.current;
+  }
+
   // Expose restart to parent
   useImperativeHandle(ref, () => ({
     // PUBLIC_INTERFACE
     restart() {
+      // Restart should only execute if there is no overlay, or the overlay is ready
+      if (!hasStarted || (!aliveRef.current && !canDismissOverlay())) {
+        return;
+      }
       setHasStarted(true); // Consider restart as started
       resetGame();
     }
   }));
 
-  // Initialize canvas context
+  // Initialize canvas context and keyboard handling
   useEffect(() => {
     const canvas = canvasRef.current;
     if (!canvas) return;
@@ -66,12 +86,29 @@ const Game = forwardRef(function Game({ onScore, onGameOver, running }, ref) {
         inputsRef.current.right = true;
         setTilt('tilt-right');
       }
+
+      // If game over overlay is showing, block general start keys and only allow ESC after debounce
+      const isGameOverOverlay = hasStarted && !aliveRef.current;
+      if (isGameOverOverlay) {
+        // Only ESC is a valid restart, but after the debounce window
+        if (e.key === 'Escape') {
+          e.preventDefault();
+          if (canDismissOverlay()) {
+            setHasStarted(true);
+            resetGame();
+          }
+        }
+        return; // block further keydown handling while overlay shown
+      }
+
       if (!hasStarted && (e.key === 'Enter' || e.key === ' ')) {
-        // Start game via keyboard
+        // Start game via keyboard (start overlay case) with debounce to avoid carry-through
+        if (!canDismissOverlay()) return;
         setHasStarted(true);
         resetGame();
       }
     };
+
     const handleKeyUp = (e) => {
       if (e.key === 'ArrowLeft' || e.key === 'a' || e.key === 'A') inputsRef.current.left = false;
       if (e.key === 'ArrowRight' || e.key === 'd' || e.key === 'D') inputsRef.current.right = false;
@@ -79,6 +116,7 @@ const Game = forwardRef(function Game({ onScore, onGameOver, running }, ref) {
       const { left, right } = inputsRef.current;
       setTilt(right ? 'tilt-right' : left ? 'tilt-left' : '');
     };
+
     window.addEventListener('keydown', handleKeyDown);
     window.addEventListener('keyup', handleKeyUp);
 
@@ -110,6 +148,7 @@ const Game = forwardRef(function Game({ onScore, onGameOver, running }, ref) {
     let rafId;
     const loop = (t) => {
       rafId = requestAnimationFrame(loop);
+      // Pause updates when not running, dead, or not started (overlay shown)
       if (!running || !aliveRef.current || !hasStarted) {
         lastTimeRef.current = t;
         render(); // render static frame (overlay shown)
@@ -199,6 +238,9 @@ const Game = forwardRef(function Game({ onScore, onGameOver, running }, ref) {
     };
     for (let a of asts) {
       if (circleRectOverlap(a.x, a.y, a.r, shipRect)) {
+        // If already dead, do not re-trigger
+        if (!aliveRef.current) break;
+
         aliveRef.current = false;
 
         // Trigger explosion overlay at ship position (pixel coordinates)
@@ -211,6 +253,9 @@ const Game = forwardRef(function Game({ onScore, onGameOver, running }, ref) {
           const id = Date.now() + Math.random();
           setExplosions((prev) => [...prev, { id, x: px, y: py, size: Math.min(W, H) * 0.22 }]);
         }
+
+        // Set debounce so overlay cannot be dismissed immediately by the same key press
+        setOverlayDebounce();
 
         if (onGameOver) onGameOver();
         break;
@@ -367,6 +412,8 @@ const Game = forwardRef(function Game({ onScore, onGameOver, running }, ref) {
           isVisible={showStartOverlay}
           type="start"
           onPrimaryAction={() => {
+            // Start only if the debounce window has passed
+            if (!canDismissOverlay()) return;
             setHasStarted(true);
             resetGame();
           }}
@@ -375,6 +422,8 @@ const Game = forwardRef(function Game({ onScore, onGameOver, running }, ref) {
           isVisible={showGameOverOverlay}
           type="gameover"
           onPrimaryAction={() => {
+            // Allow click-based restart only after debounce window
+            if (!canDismissOverlay()) return;
             setHasStarted(true);
             resetGame();
           }}
