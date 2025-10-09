@@ -2,13 +2,14 @@ import React, { useEffect, useImperativeHandle, useRef, forwardRef, useState } f
 import ThrusterEffect from './components/ThrusterEffect';
 import Explosion from './components/Explosion';
 import Overlay from './components/Overlay';
+import GameOverOverlay from './components/GameOverOverlay';
 
 /**
  * Game component encapsulates the Asteroid Dodger gameplay using a canvas and requestAnimationFrame.
  * Uses refs for mutable state to avoid unnecessary React re-renders.
  */
 // PUBLIC_INTERFACE
-const Game = forwardRef(function Game({ onScore, onGameOver, running }, ref) {
+const Game = forwardRef(function Game({ onScore, onGameOver, running, finalScore: externalFinalScore, bestScore: externalBestScore }, ref) {
   const wrapperRef = useRef(null);
   const canvasRef = useRef(null);
   const ctxRef = useRef(null);
@@ -30,6 +31,7 @@ const Game = forwardRef(function Game({ onScore, onGameOver, running }, ref) {
   const [tilt, setTilt] = useState(''); // '', 'tilt-left', 'tilt-right'
   const [explosions, setExplosions] = useState([]); // [{id,x,y,size}]
   const [hasStarted, setHasStarted] = useState(false);
+  const [lastRunScore, setLastRunScore] = useState(0);
 
   // Expose restart to parent
   useImperativeHandle(ref, () => ({
@@ -212,6 +214,10 @@ const Game = forwardRef(function Game({ onScore, onGameOver, running }, ref) {
           setExplosions((prev) => [...prev, { id, x: px, y: py, size: Math.min(W, H) * 0.22 }]);
         }
 
+        // preserve last run score for overlay
+        try {
+          setLastRunScore(Math.floor(scoreRef.current));
+        } catch {}
         if (onGameOver) onGameOver();
         break;
       }
@@ -375,6 +381,17 @@ const Game = forwardRef(function Game({ onScore, onGameOver, running }, ref) {
           isVisible={showGameOverOverlay}
           type="gameover"
           onPrimaryAction={() => {
+            setHasStarted(true);
+            resetGame();
+          }}
+        />
+
+        {/* Accessible Game Over modal overlay with dimmed background */}
+        <GameOverOverlay
+          isOpen={showGameOverOverlay}
+          finalScore={typeof externalFinalScore === 'number' ? externalFinalScore : lastRunScore}
+          bestScore={typeof externalBestScore === 'number' ? externalBestScore : lastRunScore}
+          onRestart={() => {
             setHasStarted(true);
             resetGame();
           }}
