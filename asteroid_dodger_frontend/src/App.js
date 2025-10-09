@@ -95,7 +95,10 @@ function AppShell() {
           <HUD
             score={score}
             gameOver={gameOver}
-            onRestart={() => setGameOver(false)}
+            onRestart={() => {
+              // Clear gameOver flag; GameRoute owns invoking gameRef.restart()
+              setGameOver(false);
+            }}
             bestScore={bestScore}
           />
         </div>
@@ -157,7 +160,15 @@ function GameRoute({ score, setScore, gameOver, setGameOver, onScore, onGameOver
         <Controls />
         {gameOver && (
           <div style={{ marginTop: 10 }}>
-            <button className="btn btn-primary" onClick={restart}>↻ Restart</button>
+            <button
+              className="btn btn-primary"
+              onClick={() => {
+                setGameOver(false);
+                restart();
+              }}
+            >
+              ↻ Restart
+            </button>
           </div>
         )}
       </section>
