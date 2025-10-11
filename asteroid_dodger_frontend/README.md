@@ -22,6 +22,12 @@ Add the following to your `.env` in the frontend root (do not commit secrets):
 ```
 REACT_APP_SUPABASE_URL=your_supabase_project_url
 REACT_APP_SUPABASE_KEY=your_supabase_anon_key
+
+# Mission Control (OpenAI)
+# Preferred for Vite-style env: used by missionControl service
+VITE_OPENAI_API_KEY=your_openai_api_key
+# CRA fallback supported by the service as well:
+REACT_APP_VITE_OPENAI_API_KEY=your_openai_api_key
 ```
 
 The build uses these to initialize the Supabase client (no hardcoded keys).

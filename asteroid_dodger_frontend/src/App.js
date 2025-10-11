@@ -14,6 +14,8 @@ import { AuthProvider, useAuth } from './context/AuthProvider';
 import { submitBestScore } from './services/scoreService';
 import { ensureScoresTableExists } from './lib/supabaseClient';
 import { loadLocalBestScore, updateLocalBestIfNeeded } from './services/bestScore';
+import GameOverModal from './components/GameOverModal';
+import { getMissionComment } from './services/missionControl';
 
 // PUBLIC_INTERFACE
 function AppShell() {
@@ -138,14 +140,36 @@ function AppShell() {
 function GameRoute({ score, setScore, gameOver, setGameOver, onScore, onGameOver, starfieldSpeed }) {
   const gameRef = useRef(null);
 
+  // Mission Control UI state is local to GameRoute
+  const [missionMessage, setMissionMessage] = useState('');
+  const [missionLoading, setMissionLoading] = useState(false);
+
   // PUBLIC_INTERFACE
   const restart = () => {
     setScore(0);
     setGameOver(false);
+    // Reset Mission Control state for next run
+    setMissionMessage('');
+    setMissionLoading(false);
     if (gameRef.current) {
       gameRef.current.restart();
     }
   };
+
+  // Trigger Mission Control fetch when gameOver flips to true
+  useEffect(() => {
+    if (!gameOver) return;
+    setMissionMessage('');
+    setMissionLoading(true);
+    (async () => {
+      try {
+        const msg = await getMissionComment({ score });
+        setMissionMessage(msg);
+      } finally {
+        setMissionLoading(false);
+      }
+    })();
+  }, [gameOver, score]);
 
   return (
     <>
@@ -170,6 +194,17 @@ function GameRoute({ score, setScore, gameOver, setGameOver, onScore, onGameOver
               ↻ Restart
             </button>
           </div>
+        )}
+        {gameOver && (
+          <GameOverModal
+            score={score}
+            missionMessage={missionMessage}
+            missionLoading={missionLoading}
+            onRestart={() => {
+              setGameOver(false);
+              restart();
+            }}
+          />
         )}
       </section>
     </>
