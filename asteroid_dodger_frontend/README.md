@@ -17,14 +17,17 @@ Important: Sound removed
 
 ## Environment Variables
 
-Add the following to your `.env` in the frontend root (do not commit secrets):
+This project uses Create React App (CRA). Environment variables must be prefixed with `REACT_APP_`.
+
+Add the following to your `.env` in the frontend root (do not commit secrets), or copy `.env.example` to `.env` and edit:
 
 ```
 REACT_APP_SUPABASE_URL=your_supabase_project_url
 REACT_APP_SUPABASE_KEY=your_supabase_anon_key
 ```
 
-The build uses these to initialize the Supabase client (no hardcoded keys).
+The build uses these to initialize the Supabase client in `src/lib/supabaseClient.js` (no hardcoded keys).
+If these are not provided, the app will still run with a no-op Supabase client and show auth-dependent features as unavailable.
 
 ## Supabase Setup
 
