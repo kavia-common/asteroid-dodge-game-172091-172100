@@ -24,11 +24,14 @@ REACT_APP_SUPABASE_URL=your_supabase_project_url
 REACT_APP_SUPABASE_KEY=your_supabase_anon_key
 
 # Mission Control (OpenAI)
-# Preferred for Vite-style env: used by missionControl service
+# Preferred for Vite-style env: used by missionControl service (Vite projects)
 VITE_OPENAI_API_KEY=your_openai_api_key
-# CRA fallback supported by the service as well:
+# CRA fallback supported by the service as well (Create React App projects):
 REACT_APP_VITE_OPENAI_API_KEY=your_openai_api_key
 ```
+
+Notes:
+- This project is CRA-based; for the OpenAI key the service will look for VITE_OPENAI_API_KEY first, then fallback to REACT_APP_VITE_OPENAI_API_KEY. If neither is set, the feature gracefully degrades and shows a friendly message.
 
 The build uses these to initialize the Supabase client (no hardcoded keys).
 
