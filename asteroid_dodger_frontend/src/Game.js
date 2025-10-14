@@ -99,7 +99,9 @@ const Game = forwardRef(function Game({ onScore, onGameOver, running }, ref) {
     window.addEventListener('keydown', handleKeyDown);
     window.addEventListener('keyup', handleKeyUp);
 
-    const resize = () => {
+    // Throttle resize handler to the next animation frame to avoid RO loop warnings.
+    let resizeRaf = 0;
+    const doResize = () => {
       const container = wrapperRef.current;
       if (!container) return;
       const rect = container.getBoundingClientRect();
@@ -119,7 +121,16 @@ const Game = forwardRef(function Game({ onScore, onGameOver, running }, ref) {
       canvas.style.height = `${Math.floor(height)}px`;
       ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
     };
-    resize();
+    const resize = () => {
+      if (resizeRaf) return;
+      resizeRaf = requestAnimationFrame(() => {
+        resizeRaf = 0;
+        doResize();
+      });
+    };
+    // initial size
+    doResize();
+    // Observe container size changes
     const ro = new ResizeObserver(resize);
     if (wrapperRef.current) ro.observe(wrapperRef.current);
 

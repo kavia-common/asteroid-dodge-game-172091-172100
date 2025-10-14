@@ -31,7 +31,9 @@ export default function Starfield({ speed = 1, density = 1, color = '#ffffff' })
     const ctx = canvas.getContext('2d');
     ctxRef.current = ctx;
 
-    const handleResize = () => {
+    // Throttle to next animation frame to avoid ResizeObserver loop warnings
+    let resizeRaf = 0;
+    const applyResize = () => {
       const parent = canvas.parentElement || document.body;
       const rect = parent.getBoundingClientRect();
       const w = Math.max(320, rect.width);
@@ -48,11 +50,18 @@ export default function Starfield({ speed = 1, density = 1, color = '#ffffff' })
       // Rebuild stars for new size
       buildStars();
     };
+    const handleResize = () => {
+      if (resizeRaf) return;
+      resizeRaf = requestAnimationFrame(() => {
+        resizeRaf = 0;
+        applyResize();
+      });
+    };
 
     const ro = new ResizeObserver(handleResize);
     ro.observe(canvas.parentElement || canvas);
 
-    handleResize();
+    applyResize();
     lastRef.current = performance.now();
 
     const loop = (t) => {
