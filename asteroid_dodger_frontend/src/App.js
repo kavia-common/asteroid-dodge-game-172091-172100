@@ -10,10 +10,13 @@ import BackgroundGradient from './components/BackgroundGradient';
 import AuthPage from './components/AuthPage';
 import Leaderboard from './components/Leaderboard';
 import ProtectedRoute from './components/ProtectedRoute';
-import { AuthProvider, useAuth } from './context/AuthProvider';
+import { AuthProvider } from './context/AuthProvider';
 import { submitBestScore } from './services/scoreService';
 import { ensureScoresTableExists } from './lib/supabaseClient';
 import { loadLocalBestScore, updateLocalBestIfNeeded } from './services/bestScore';
+import AuthButton from './components/AuthButton.jsx';
+import UserBadge from './components/UserBadge.jsx';
+import { useAuth as useOAuth } from './hooks/useAuth';
 
 // PUBLIC_INTERFACE
 function AppShell() {
@@ -23,7 +26,7 @@ function AppShell() {
   const [gameOver, setGameOver] = useState(false);
   const [bestScore, setBestScore] = useState(() => loadLocalBestScore());
 
-  const { user, signOut } = useAuth();
+  const { user } = useOAuth();
 
   // track latest score in ref to avoid stale closures when gameOver triggers
   const latestScoreRef = useRef(score);
@@ -84,14 +87,7 @@ function AppShell() {
         <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
           <Link to="/" className="btn">Play</Link>
           <Link to="/leaderboard" className="btn">Leaderboard</Link>
-          {user ? (
-            <>
-              {/* Move email presentation into the HUD with accessible colors */}
-              <button className="btn" onClick={() => signOut()}>Logout</button>
-            </>
-          ) : (
-            <Link to="/auth" className="btn btn-primary">Sign In</Link>
-          )}
+          {user ? <UserBadge /> : <AuthButton />}
           <HUD
             score={score}
             gameOver={gameOver}
