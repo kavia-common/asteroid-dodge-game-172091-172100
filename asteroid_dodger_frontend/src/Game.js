@@ -119,7 +119,9 @@ const Game = forwardRef(function Game({ onScore, onGameOver, running }, ref) {
       canvas.height = Math.floor(height * dpr);
       canvas.style.width = `${Math.floor(width)}px`;
       canvas.style.height = `${Math.floor(height)}px`;
-      ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+      if (ctx) {
+        ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+      }
     };
     const resize = () => {
       if (resizeRaf) return;
@@ -141,6 +143,7 @@ const Game = forwardRef(function Game({ onScore, onGameOver, running }, ref) {
       rafId = requestAnimationFrame(loop);
       // Pause updates when not running, dead, or not started (start overlay)
       if (!running || !aliveRef.current || !hasStarted) {
+        // Keep last time in sync while paused and still render for overlays/idle frame
         lastTimeRef.current = t;
         render(); // render static frame
         return;
@@ -234,9 +237,12 @@ const Game = forwardRef(function Game({ onScore, onGameOver, running }, ref) {
 
         // Trigger explosion effect at ship position
         const canvas = canvasRef.current;
-        if (canvas) {
-          const W = canvas.clientWidth;
-          const H = canvas.clientHeight;
+        const ctx = ctxRef.current;
+        if (canvas && ctx) {
+          const scaleX = ctx.getTransform().a || 1;
+          const scaleY = ctx.getTransform().d || 1;
+          const W = canvas.width / scaleX;
+          const H = canvas.height / scaleY;
           const px = ship.x * W;
           const py = ship.y * H;
           const id = Date.now() + Math.random();
@@ -258,8 +264,9 @@ const Game = forwardRef(function Game({ onScore, onGameOver, running }, ref) {
     const canvas = canvasRef.current;
     if (!ctx || !canvas) return;
 
-    const W = canvas.clientWidth;
-    const H = canvas.clientHeight;
+    // Use the internal canvas buffer size since we set DPR transform on context.
+    const W = canvas.width / (ctx.getTransform().a || 1);
+    const H = canvas.height / (ctx.getTransform().d || 1);
 
     // Clear
     ctx.clearRect(0, 0, W, H);
@@ -331,9 +338,12 @@ const Game = forwardRef(function Game({ onScore, onGameOver, running }, ref) {
   // Compute ship overlay position for CSS tilt and thruster placement
   const shipOverlay = (() => {
     const canvas = canvasRef.current;
-    if (!canvas) return { x: 0, y: 0, w: 0, h: 0 };
-    const W = canvas.clientWidth;
-    const H = canvas.clientHeight;
+    const ctx = ctxRef.current;
+    if (!canvas || !ctx) return { x: 0, y: 0, w: 0, h: 0 };
+    const scaleX = ctx.getTransform().a || 1;
+    const scaleY = ctx.getTransform().d || 1;
+    const W = (canvas.width / scaleX);
+    const H = (canvas.height / scaleY);
     const ship = shipRef.current;
     return {
       x: ship.x * W,
