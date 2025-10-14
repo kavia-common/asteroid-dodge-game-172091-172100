@@ -22,8 +22,8 @@ const Game = forwardRef(function Game({ onScore, onGameOver, running }, ref) {
   const renderScaleRef = useRef(1);
   const presetRef = useRef(getSizePresetFromQuery());
 
-  // Mutable game state
-  const shipRef = useRef({ x: 0.5, y: 0.92, w: 0.08, h: 0.04, speed: 0.55 }); // normalized units
+  // Mutable game state (normalized 0..1 positions/sizes)
+  const shipRef = useRef({ x: 0.5, y: 0.92, w: 0.08, h: 0.04, speed: 0.55 });
   const inputsRef = useRef({ left: false, right: false });
   const asteroidsRef = useRef([]);
   const lastTimeRef = useRef(0);
@@ -34,26 +34,47 @@ const Game = forwardRef(function Game({ onScore, onGameOver, running }, ref) {
   const aliveRef = useRef(true);
   const emojiSupportRef = useRef(true);
 
+  // When React StrictMode re-mounts components, ensure loop/handlers are not duplicated by
+  // keeping mutable flags in refs instead of re-creating the effect for state changes.
+  const runningRef = useRef(Boolean(running));
+  const hasStartedRef = useRef(false);
+
   // UI overlay states
   const [tilt, setTilt] = useState('');
   const [explosions, setExplosions] = useState([]);
   const [hasStarted, setHasStarted] = useState(false);
+
+  useEffect(() => { runningRef.current = Boolean(running); }, [running]);
+  useEffect(() => { hasStartedRef.current = Boolean(hasStarted); }, [hasStarted]);
 
   // Expose restart to parent (HUD/Controls call this via App)
   useImperativeHandle(ref, () => ({
     // PUBLIC_INTERFACE
     restart() {
       // If never started, treat restart as starting the first round
-      if (!hasStarted) setHasStarted(true);
+      if (!hasStarted) {
+        setHasStarted(true);
+        hasStartedRef.current = true;
+      }
       resetGame();
     }
   }));
 
-  // Initialize canvas context and keyboard handling
+  // Initialize canvas context and keyboard handling (mount once)
   useEffect(() => {
     const canvas = canvasRef.current;
-    if (!canvas) return;
+    if (!canvas) {
+      // eslint-disable-next-line no-console
+      console.error('[Game] Canvas ref is null on mount.');
+      return;
+    }
+
     const ctx = canvas.getContext('2d');
+    if (!ctx) {
+      // eslint-disable-next-line no-console
+      console.error('[Game] 2D context not available.');
+      return;
+    }
     ctxRef.current = ctx;
 
     // Detect rough emoji rendering support (fallback to shapes)
@@ -77,14 +98,15 @@ const Game = forwardRef(function Game({ onScore, onGameOver, running }, ref) {
       }
 
       // When game over, block game controls (no overlay/ESC handler)
-      if (hasStarted && !aliveRef.current) {
+      if (hasStartedRef.current && !aliveRef.current) {
         e.preventDefault();
         return;
       }
 
       // Start game via keyboard from start overlay
-      if (!hasStarted && (e.key === 'Enter' || e.key === ' ')) {
+      if (!hasStartedRef.current && (e.key === 'Enter' || e.key === ' ')) {
         setHasStarted(true);
+        hasStartedRef.current = true;
         resetGame();
       }
     };
@@ -103,51 +125,86 @@ const Game = forwardRef(function Game({ onScore, onGameOver, running }, ref) {
     let resizeRaf = 0;
     const doResize = () => {
       const container = wrapperRef.current;
-      if (!container) return;
-      const rect = container.getBoundingClientRect();
+      const rect = container ? container.getBoundingClientRect() : { width: 640, height: 480 };
       const viewportH = window.innerHeight || rect.height || 720;
 
-      const { width, height, scale } = computeRenderSize(rect.width, viewportH, {
-        preset: presetRef.current,
-      });
+      const { width, height, scale } = computeRenderSize(
+        Number(rect.width) || 640,
+        viewportH,
+        { preset: presetRef.current }
+      );
 
-      renderScaleRef.current = scale;
+      renderScaleRef.current = isFiniteNumber(scale) ? scale : 1;
 
       // Apply CSS size and back the internal buffer with DPR for crisp text/emojis
       const dpr = Math.min(window.devicePixelRatio || 1, 2);
-      canvas.width = Math.floor(width * dpr);
-      canvas.height = Math.floor(height * dpr);
-      canvas.style.width = `${Math.floor(width)}px`;
-      canvas.style.height = `${Math.floor(height)}px`;
-      if (ctx) {
-        ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+      const cssW = Math.max(200, Math.floor(width));
+      const cssH = Math.max(150, Math.floor(height));
+      canvas.width = Math.max(200, Math.floor(width * dpr));
+      canvas.height = Math.max(150, Math.floor(height * dpr));
+      canvas.style.width = `${cssW}px`;
+      canvas.style.height = `${cssH}px`;
+
+      if (ctxRef.current && typeof ctxRef.current.setTransform === 'function') {
+        ctxRef.current.setTransform(dpr, 0, 0, dpr, 0, 0);
       }
+
+      // First-frame debug draw to verify rendering path
+      try {
+        const ctx2 = ctxRef.current;
+        if (ctx2) {
+          const W = canvas.width / (ctx2.getTransform?.().a || dpr || 1);
+          const H = canvas.height / (ctx2.getTransform?.().d || dpr || 1);
+          ctx2.clearRect(0, 0, W, H);
+          ctx2.fillStyle = '#00FF88';
+          ctx2.fillRect(8, 8, 8, 8); // tiny debug square
+          ctx2.fillStyle = '#ffffff';
+          ctx2.font = '10px system-ui, sans-serif';
+          ctx2.fillText('dbg', 22, 16);
+        }
+      } catch (e) {
+        // eslint-disable-next-line no-console
+        console.warn('[Game] Debug draw failed:', e?.message || e);
+      }
+
+      // eslint-disable-next-line no-console
+      try { console.debug('[Game] resize', { cssW, cssH, dpr, scale: renderScaleRef.current }); } catch {}
     };
-    const resize = () => {
+
+    const scheduleResize = () => {
       if (resizeRaf) return;
       resizeRaf = requestAnimationFrame(() => {
         resizeRaf = 0;
         doResize();
       });
     };
+
     // initial size
     doResize();
-    // Observe container size changes
-    const ro = new ResizeObserver(resize);
-    if (wrapperRef.current) ro.observe(wrapperRef.current);
+
+    // Observe container size changes (guard for environments without ResizeObserver)
+    let ro = null;
+    if (typeof ResizeObserver !== 'undefined') {
+      ro = new ResizeObserver(scheduleResize);
+      if (wrapperRef.current) ro.observe(wrapperRef.current);
+    }
+    // Also listen to window resize and potential DPR changes
+    window.addEventListener('resize', scheduleResize);
 
     resetGame(); // set initial state (idle)
 
     let rafId;
     const loop = (t) => {
       rafId = requestAnimationFrame(loop);
+
       // Pause updates when not running, dead, or not started (start overlay)
-      if (!running || !aliveRef.current || !hasStarted) {
+      if (!runningRef.current || !aliveRef.current || !hasStartedRef.current) {
         // Keep last time in sync while paused and still render for overlays/idle frame
         lastTimeRef.current = t;
         render(); // render static frame
         return;
       }
+
       const last = lastTimeRef.current || t;
       const dt = Math.min(0.033, (t - last) / 1000);
       lastTimeRef.current = t;
@@ -159,11 +216,11 @@ const Game = forwardRef(function Game({ onScore, onGameOver, running }, ref) {
     return () => {
       window.removeEventListener('keydown', handleKeyDown);
       window.removeEventListener('keyup', handleKeyUp);
-      ro.disconnect();
+      window.removeEventListener('resize', scheduleResize);
+      ro?.disconnect();
       cancelAnimationFrame(rafId);
     };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [hasStarted, running]);
+  }, []); // mount once
 
   // Reset or initialize game state
   function resetGame() {
@@ -189,6 +246,7 @@ const Game = forwardRef(function Game({ onScore, onGameOver, running }, ref) {
     const ship = shipRef.current;
     const move = (inputsRef.current.right ? 1 : 0) - (inputsRef.current.left ? 1 : 0);
     ship.x += move * ship.speed * dt;
+    if (!isFiniteNumber(ship.x)) ship.x = 0.5; // guard against NaN
     ship.x = Math.max(ship.w / 2, Math.min(1 - ship.w / 2, ship.x));
 
     // Spawn asteroids
@@ -239,8 +297,8 @@ const Game = forwardRef(function Game({ onScore, onGameOver, running }, ref) {
         const canvas = canvasRef.current;
         const ctx = ctxRef.current;
         if (canvas && ctx) {
-          const scaleX = ctx.getTransform().a || 1;
-          const scaleY = ctx.getTransform().d || 1;
+          const scaleX = ctx.getTransform?.().a || 1;
+          const scaleY = ctx.getTransform?.().d || 1;
           const W = canvas.width / scaleX;
           const H = canvas.height / scaleY;
           const px = ship.x * W;
@@ -265,11 +323,22 @@ const Game = forwardRef(function Game({ onScore, onGameOver, running }, ref) {
     if (!ctx || !canvas) return;
 
     // Use the internal canvas buffer size since we set DPR transform on context.
-    const W = canvas.width / (ctx.getTransform().a || 1);
-    const H = canvas.height / (ctx.getTransform().d || 1);
+    const tr = ctx.getTransform?.();
+    const scaleX = tr?.a || 1;
+    const scaleY = tr?.d || 1;
+    let W = canvas.width / scaleX;
+    let H = canvas.height / scaleY;
+
+    if (!isFiniteNumber(W) || !isFiniteNumber(H) || W <= 0 || H <= 0) {
+      W = 640; H = 480;
+    }
 
     // Clear
     ctx.clearRect(0, 0, W, H);
+
+    // First-frame persistent tiny debug pixel to confirm draw path
+    ctx.fillStyle = '#00FF88';
+    ctx.fillRect(8, 8, 8, 8);
 
     // Draw ship
     const ship = shipRef.current;
@@ -280,10 +349,16 @@ const Game = forwardRef(function Game({ onScore, onGameOver, running }, ref) {
       h: ship.h * H
     };
 
+    // Guard against NaN during initial layout
+    if (!isFiniteNumber(shipPx.x) || !isFiniteNumber(shipPx.y) || !isFiniteNumber(shipPx.w) || !isFiniteNumber(shipPx.h)) {
+      return;
+    }
+
     if (emojiSupportRef.current) {
       ctx.font = `${Math.floor(shipPx.h * 1.6)}px system-ui, Apple Color Emoji, Segoe UI Emoji`;
       ctx.textAlign = 'center';
       ctx.textBaseline = 'middle';
+      ctx.fillStyle = '#ffffff';
       ctx.fillText('🚀', shipPx.x, shipPx.y);
     } else {
       // triangle ship
@@ -310,6 +385,7 @@ const Game = forwardRef(function Game({ onScore, onGameOver, running }, ref) {
         ctx.font = `${Math.floor(r * 2)}px system-ui, Apple Color Emoji, Segoe UI Emoji`;
         ctx.textAlign = 'center';
         ctx.textBaseline = 'middle';
+        ctx.fillStyle = '#ffffff';
         ctx.fillText('☄️', 0, 0);
         ctx.restore();
       } else {
@@ -340,8 +416,9 @@ const Game = forwardRef(function Game({ onScore, onGameOver, running }, ref) {
     const canvas = canvasRef.current;
     const ctx = ctxRef.current;
     if (!canvas || !ctx) return { x: 0, y: 0, w: 0, h: 0 };
-    const scaleX = ctx.getTransform().a || 1;
-    const scaleY = ctx.getTransform().d || 1;
+    const tr = ctx.getTransform?.();
+    const scaleX = tr?.a || 1;
+    const scaleY = tr?.d || 1;
     const W = (canvas.width / scaleX);
     const H = (canvas.height / scaleY);
     const ship = shipRef.current;
@@ -406,6 +483,7 @@ const Game = forwardRef(function Game({ onScore, onGameOver, running }, ref) {
           type="start"
           onPrimaryAction={() => {
             setHasStarted(true);
+            hasStartedRef.current = true;
             resetGame();
           }}
         />
@@ -431,5 +509,6 @@ function circleRectOverlap(cx, cy, cr, rect) {
 }
 
 function clamp(v, min, max) { return Math.max(min, Math.min(max, v)); }
+function isFiniteNumber(n) { return typeof n === 'number' && Number.isFinite(n); }
 
 export default Game;
